@@ -1,0 +1,293 @@
+import { useState, useEffect } from 'react'
+import Header from '../../components/layout/Header'
+import { useComandasStore } from '../../store/comandasStore'
+import { imprimirTicketComanda } from '../../lib/ticket'
+import type { Comanda, ItemComanda, EstadoItem } from '../../types'
+import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer } from 'lucide-react'
+
+function tiempoTranscurrido(isoString: string): { minutos: number; label: string; urgente: boolean } {
+  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000)
+  return {
+    minutos: diff,
+    label: diff < 60 ? `${diff} min` : `${Math.floor(diff / 60)}h ${diff % 60}m`,
+    urgente: diff >= 10,
+  }
+}
+
+// Fondo SÓLIDO por estado (no tono clarito), con el texto en blanco/oscuro
+// según haga falta para contraste.
+const ESTADO_ITEM_CONFIG: Record<EstadoItem, { label: string; color: string; bg: string }> = {
+  pendiente:      { label: 'Pendiente',   color: 'text-white',    bg: 'bg-gray-500'  },
+  en_preparacion: { label: 'Preparando',  color: 'text-gray-900', bg: 'bg-gold-500'  },
+  listo:          { label: 'Listo',       color: 'text-white',    bg: 'bg-gold-600'  },
+  servido:        { label: 'Servido',     color: 'text-gray-600', bg: 'bg-gray-200'  },
+  cancelado:      { label: 'Cancelado',   color: 'text-white',    bg: 'bg-red-500'   },
+  devuelto:       { label: 'Devuelto',    color: 'text-white',    bg: 'bg-rojo-600'  },
+}
+
+function proximo(estado: EstadoItem): EstadoItem | null {
+  const flujo: EstadoItem[] = ['pendiente', 'en_preparacion', 'listo', 'servido']
+  const idx = flujo.indexOf(estado)
+  return idx >= 0 && idx < flujo.length - 1 ? flujo[idx + 1] : null
+}
+
+function ItemBar({
+  item,
+  onCambiarEstado,
+}: {
+  item: ItemComanda
+  onCambiarEstado: (estado: EstadoItem) => void
+}) {
+  const cfg = ESTADO_ITEM_CONFIG[item.estado]
+  const siguiente = proximo(item.estado)
+
+  if (item.estado === 'devuelto') {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-rojo-600">
+        <RotateCcw size={15} className="text-white shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white line-through truncate">{item.nombre}</p>
+          <span className="text-[10px] font-bold text-rojo-700 bg-white px-1.5 py-0.5 rounded">DEVUELTO — retirar</span>
+        </div>
+        <button
+          onClick={() => onCambiarEstado('cancelado')}
+          className="shrink-0 px-2 py-1 rounded text-xs font-bold bg-white text-rojo-700 hover:bg-rojo-50 transition-colors"
+        >
+          Aceptar ✓
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
+      item.estado === 'listo'          ? 'border-gold-200 bg-gold-50' :
+      item.estado === 'en_preparacion' ? 'border-gold-200 bg-gold-50' :
+      'border-gray-100 bg-white'
+    }`}>
+      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.color}`}>
+        ×{item.cantidad}
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className={`text-sm font-medium truncate ${item.estado === 'servido' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+          {item.nombre}
+        </p>
+        {item.nota && (
+          <p className="text-xs text-rojo-600 italic">⚠ {item.nota}</p>
+        )}
+      </div>
+      {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
+        <button
+          onClick={() => onCambiarEstado(siguiente)}
+          className={`shrink-0 px-2 py-1 rounded text-xs font-medium transition-colors ${
+            siguiente === 'en_preparacion'
+              ? 'bg-gold-600 text-white hover:bg-gold-700'
+              : siguiente === 'listo'
+              ? 'bg-rojo-500 text-white hover:bg-rojo-600'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          {siguiente === 'en_preparacion' ? 'Preparar' : siguiente === 'listo' ? 'Listo ✓' : 'Servido'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+type ColumnaKDS = 'nuevas' | 'preparacion' | 'listas'
+
+function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
+  comanda: Comanda
+  todosLosItems: ItemComanda[]  // todos los ítems de bar de la comanda — para el progreso y saber cuándo está todo listo
+  itemsColumna: ItemComanda[]   // solo los ítems que corresponden a ESTA columna (misma comanda puede aparecer en varias)
+  columna: ColumnaKDS
+}) {
+  const actualizarEstadoItem = useComandasStore((s) => s.actualizarEstadoItem)
+  const actualizarEstadoComanda = useComandasStore((s) => s.actualizarEstadoComanda)
+  const [, forceUpdate] = useState(0)
+  const tiempo = tiempoTranscurrido(comanda.creadaEn)
+
+  useEffect(() => {
+    const t = setInterval(() => forceUpdate((n) => n + 1), 30000)
+    return () => clearInterval(t)
+  }, [])
+
+  const itemsActivos = todosLosItems.filter((i) => i.estado !== 'cancelado')
+  const todosListos = itemsActivos.length > 0 && itemsActivos.every(
+    (i) => i.estado === 'listo' || i.estado === 'servido'
+  )
+  const enPrep = itemsActivos.filter((i) => i.estado === 'en_preparacion').length
+  const listos = itemsActivos.filter((i) => i.estado === 'listo' || i.estado === 'servido').length
+  const progreso = itemsActivos.length > 0 ? Math.round((listos / itemsActivos.length) * 100) : 0
+
+  // Encabezado de la tarjeta con fondo SÓLIDO cuando hay algo que atender
+  // (urgente o listo para servir); neutro mientras está en curso normal.
+  const headerBg    = tiempo.urgente ? 'bg-red-500' : todosListos ? 'bg-gold-500' : 'bg-gray-50'
+  const headerText  = tiempo.urgente ? 'text-white' : todosListos ? 'text-gray-900' : 'text-gray-800'
+  const headerMuted = tiempo.urgente ? 'text-white/80' : todosListos ? 'text-gray-900/70' : 'text-gray-500'
+  const headerChip  = tiempo.urgente ? 'bg-white/20 text-white' : todosListos ? 'bg-black/10 text-gray-900' : 'bg-gold-600 text-white'
+
+  return (
+    <div className={`bg-white rounded-xl shadow-sm border-2 flex flex-col overflow-hidden transition-all ${
+      tiempo.urgente ? 'border-red-500' : todosListos ? 'border-gold-500' : enPrep > 0 ? 'border-gold-300' : 'border-gray-200'
+    }`}>
+      {/* Header */}
+      <div className={`px-4 py-3 flex items-center justify-between ${headerBg}`}>
+        <div className="flex items-center gap-2">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${headerChip}`}>
+            {comanda.numeroMesa}
+          </div>
+          <div>
+            <p className={`text-sm font-bold ${headerText}`}>Mesa {comanda.numeroMesa}</p>
+            <p className={`text-xs ${headerMuted}`}>{comanda.mozo}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className={`flex items-center gap-1 text-xs font-medium ${tiempo.urgente ? 'text-white' : headerMuted}`}>
+            {tiempo.urgente && <AlertTriangle size={12} />}
+            <Clock size={12} />
+            {tiempo.label}
+          </div>
+          <button
+            onClick={() => imprimirTicketComanda(comanda, itemsColumna, 'bar')}
+            title="Reimprimir ticket"
+            className={`p-1 rounded transition-colors ${tiempo.urgente ? 'hover:bg-white/20 text-white' : todosListos ? 'hover:bg-black/10 text-gray-900' : 'hover:bg-gray-200 text-gray-500'}`}
+          >
+            <Printer size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* Barra de progreso */}
+      <div className="h-1 bg-gray-100">
+        <div
+          className={`h-full transition-all ${todosListos ? 'bg-gold-500' : 'bg-gold-400'}`}
+          style={{ width: `${progreso}%` }}
+        />
+      </div>
+
+      {/* Ítems de esta columna */}
+      <div className="flex-1 p-3 space-y-2">
+        {itemsColumna.map((item) => (
+          <ItemBar
+            key={item.id}
+            item={item}
+            onCambiarEstado={(estado) => actualizarEstadoItem(comanda.id, item.id, estado)}
+          />
+        ))}
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+        <span className="text-xs text-gray-400">
+          {listos}/{itemsActivos.length} bebidas en total
+        </span>
+        {columna === 'listas' && todosListos && (
+          <button
+            onClick={() => actualizarEstadoComanda(comanda.id, 'lista')}
+            className="flex items-center gap-1 px-3 py-1.5 bg-rojo-500 text-white rounded-lg text-xs font-semibold hover:bg-rojo-600 transition-colors"
+          >
+            <CheckCircle size={13} />
+            Pedido listo
+          </button>
+        )}
+        {columna === 'nuevas' && itemsColumna.length > 0 && (
+          <button
+            onClick={() =>
+              itemsColumna.forEach((i) => {
+                if (i.estado === 'pendiente') actualizarEstadoItem(comanda.id, i.id, 'en_preparacion')
+              })
+            }
+            className="flex items-center gap-1 px-3 py-1.5 bg-gold-600 text-white rounded-lg text-xs font-semibold hover:bg-gold-700 transition-colors"
+          >
+            <Play size={13} />
+            Preparar {itemsColumna.length > 1 ? 'todo' : ''}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface GrupoKDS {
+  comanda: Comanda
+  todosLosItems: ItemComanda[]
+  itemsColumna: ItemComanda[]
+}
+
+// Agrupa por comanda los ítems que caen en una columna dada. Una misma
+// comanda puede aparecer en varias columnas a la vez: si de 3 bebidas una ya
+// se puso a preparar, esa bebida se ve en "Preparando" y las otras dos
+// siguen en "Nuevas", cada una en su propia mini-tarjeta.
+function agruparPorColumna(
+  comandas: Comanda[],
+  itemsDeArea: (c: Comanda) => ItemComanda[],
+  estados: EstadoItem[]
+): GrupoKDS[] {
+  return comandas
+    .map((c) => {
+      const todosLosItems = itemsDeArea(c)
+      const itemsColumna = todosLosItems.filter((i) => estados.includes(i.estado))
+      return { comanda: c, todosLosItems, itemsColumna }
+    })
+    .filter((g) => g.itemsColumna.length > 0)
+}
+
+export default function BarPage() {
+  const comandas = useComandasStore((s) => s.comandas)
+
+  const itemsBar = (c: Comanda) => c.items.filter((i) => i.area === 'bar')
+  const comandasActivas = comandas.filter((c) => c.estado !== 'cerrada' && c.estado !== 'cancelada')
+
+  const gruposNuevas      = agruparPorColumna(comandasActivas, itemsBar, ['pendiente'])
+  const gruposPreparacion = agruparPorColumna(comandasActivas, itemsBar, ['en_preparacion'])
+  const gruposListas      = agruparPorColumna(comandasActivas, itemsBar, ['listo', 'devuelto'])
+
+  const columnas: { titulo: string; icon: typeof Flame; columna: ColumnaKDS; grupos: GrupoKDS[]; bg: string; text: string; chip: string }[] = [
+    { titulo: 'Nuevas',             icon: Flame,       columna: 'nuevas',      grupos: gruposNuevas,      bg: 'bg-rojo-500', text: 'text-white',    chip: 'bg-white text-rojo-600' },
+    { titulo: 'Preparando',         icon: Beer,        columna: 'preparacion', grupos: gruposPreparacion, bg: 'bg-gold-500', text: 'text-gray-900', chip: 'bg-white text-gold-700' },
+    { titulo: 'Listos para servir', icon: CheckCircle, columna: 'listas',      grupos: gruposListas,      bg: 'bg-gray-600', text: 'text-white',    chip: 'bg-white text-gray-700' },
+  ]
+
+  return (
+    <div className="flex flex-col h-full">
+      <Header titulo="Bar — KDS" subtitulo="Bebidas & Cócteles" />
+
+      <div className="flex-1 p-4 md:p-6 overflow-y-auto md:overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 md:h-full">
+          {columnas.map(({ titulo, icon: Icon, columna, grupos, bg, text, chip }) => (
+            <div key={titulo} className="flex flex-col md:min-h-0">
+              {/* Columna header */}
+              <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl ${bg} mb-3`}>
+                <Icon size={16} className={text} />
+                <span className={`text-sm font-bold ${text}`}>{titulo}</span>
+                <span className={`ml-auto text-xs font-bold ${chip} rounded-full w-6 h-6 flex items-center justify-center`}>
+                  {grupos.length}
+                </span>
+              </div>
+              {/* Cards */}
+              <div className="md:flex-1 md:overflow-y-auto space-y-4 md:pr-1">
+                {grupos.length === 0 ? (
+                  <div className="text-center py-10 text-gray-300">
+                    <GlassWater size={36} className="mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">Sin pedidos</p>
+                  </div>
+                ) : (
+                  grupos.map(({ comanda, todosLosItems, itemsColumna }) => (
+                    <TarjetaComandaBar
+                      key={comanda.id}
+                      comanda={comanda}
+                      todosLosItems={todosLosItems}
+                      itemsColumna={itemsColumna}
+                      columna={columna}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

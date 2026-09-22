@@ -1,0 +1,240 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Usuarios ────────────────────────────────────────────────────────────────
+// rol: admin | cajero | mozo | cocinero | bartender
+
+model Usuario {
+  id        String   @id @default(uuid())
+  nombre    String
+  email     String   @unique
+  password  String
+  rol       String   @default("mozo")
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+
+  comandas  Comanda[]
+  reservas  Reserva[]
+}
+
+// ─── Mesas ───────────────────────────────────────────────────────────────────
+// zona: salon | terraza | barra | vip
+// estado: libre | ocupada | reservada | esperando_pago | en_limpieza | unida
+
+model Mesa {
+  id        String   @id @default(uuid())
+  numero    Int      @unique
+  capacidad Int
+  zona      String   @default("salon")
+  estado    String   @default("libre")
+  posX      Float    @default(0)
+  posY      Float    @default(0)
+
+  comandas  Comanda[]
+  reservas  Reserva[]
+}
+
+// ─── Carta / Productos ───────────────────────────────────────────────────────
+// categoria: entradas | fondos | bebidas | cocteles | postres | extras
+
+model Producto {
+  id                String   @id @default(uuid())
+  nombre            String
+  descripcion       String?
+  precio            Float
+  categoria         String
+  disponible        Boolean  @default(true)
+  imagen            String?
+  tiempoPreparacion Int?
+  esAlcoholico      Boolean  @default(false)
+  tieneGuarnicion   Boolean  @default(false)
+  guarnicionesDisponibles String?
+  creadoEn          DateTime @default(now())
+  actualizadoEn     DateTime @updatedAt
+
+  items             ItemComanda[]
+}
+
+// ─── Comandas ────────────────────────────────────────────────────────────────
+// estado: abierta | enviada_cocina | en_preparacion | lista | cerrada | cancelada
+
+model Comanda {
+  id            String   @id @default(uuid())
+  mesaId        String
+  numeroMesa    Int
+  estado        String   @default("abierta")
+  mozo          String
+  total         Float    @default(0)
+  tipoDescuento String?
+  notaGeneral   String?
+  mesasUnidas   String?
+  creadaEn      DateTime @default(now())
+  actualizadaEn DateTime @updatedAt
+
+  mesa      Mesa          @relation(fields: [mesaId], references: [id])
+  usuario   Usuario?      @relation(fields: [usuarioId], references: [id])
+  usuarioId String?
+  items     ItemComanda[]
+  cuentas   CuentaParcial[]
+}
+
+// ─── Ítems de comanda ─────────────────────────────────────────────────────────
+// estado: pendiente | en_preparacion | listo | servido | cancelado | devuelto
+// area: cocina | bar
+
+model ItemComanda {
+  id             String   @id @default(uuid())
+  comandaId      String
+  productoId     String
+  nombre         String
+  cantidad       Int
+  precioUnitario Float
+  nota           String?
+  estado         String   @default("pendiente")
+  area           String   @default("cocina")
+  tipoPlato      String?
+  guarniciones   String?
+
+  comanda    Comanda     @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  producto   Producto    @relation(fields: [productoId], references: [id])
+  cuentaItems ItemCuenta[]
+}
+
+// ─── Turno de trabajo ─────────────────────────────────────────────────────────
+// estado: activo | cerrado
+
+model Turno {
+  id          String    @id @default(uuid())
+  estado      String    @default("activo")
+  iniciadoPor String
+  mozos       String    @default("[]")
+  iniciadoEn  DateTime  @default(now())
+  cerradoEn   DateTime?
+}
+
+// ─── Cobro dividido ──────────────────────────────────────────────────────────
+// estado: pendiente | pagada
+// metodoPago: efectivo | tarjeta | yape_plin | mixto
+
+model CuentaParcial {
+  id          String    @id @default(uuid())
+  comandaId   String
+  numero      Int
+  subtotal    Float
+  descuento   Float     @default(0)
+  propina     Float     @default(0)
+  total       Float
+  metodoPago  String?
+  estado      String    @default("pendiente")
+  pagadoEn    DateTime?
+
+  comanda  Comanda    @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  items    ItemCuenta[]
+}
+
+model ItemCuenta {
+  id            String @id @default(uuid())
+  cuentaId      String
+  itemComandaId String
+  cantidad      Int
+  subtotal      Float
+
+  cuenta      CuentaParcial @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  itemComanda ItemComanda   @relation(fields: [itemComandaId], references: [id])
+}
+
+// ─── Reservas ────────────────────────────────────────────────────────────────
+// estado: pendiente | confirmada | cancelada | completada
+
+model Reserva {
+  id            String   @id @default(uuid())
+  mesaId        String
+  usuarioId     String?
+  clienteNombre String
+  clienteTel    String?
+  fecha         DateTime
+  duracionMin   Int      @default(90)
+  personas      Int
+  estado        String   @default("pendiente")
+  notas         String?
+  creadaEn      DateTime @default(now())
+
+  mesa    Mesa     @relation(fields: [mesaId], references: [id])
+  usuario Usuario? @relation(fields: [usuarioId], references: [id])
+}
+
+// ─── Inventario ──────────────────────────────────────────────────────────────
+
+model Insumo {
+  id             String   @id @default(uuid())
+  nombre         String
+  categoria      String
+  unidad         String
+  stockActual    Float
+  stockMinimo    Float
+  stockMaximo    Float
+  precioUnitario Float
+  proveedor      String?
+  creadoEn       DateTime @default(now())
+  actualizadoEn  DateTime @updatedAt
+
+  movimientos MovimientoStock[]
+}
+
+// tipo: entrada | salida | ajuste
+
+model MovimientoStock {
+  id          String   @id @default(uuid())
+  insumoId    String
+  tipo        String
+  cantidad    Float
+  motivo      String?
+  realizadoEn DateTime @default(now())
+
+  insumo Insumo @relation(fields: [insumoId], references: [id])
+}
+
+// ─── Proveedores ─────────────────────────────────────────────────────────────
+
+model Proveedor {
+  id        String   @id @default(uuid())
+  nombre    String
+  ruc       String?  @unique
+  contacto  String?
+  telefono  String?
+  email     String?
+  direccion String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now())
+
+  compras Compra[]
+}
+
+model Compra {
+  id          String   @id @default(uuid())
+  proveedorId String
+  fecha       DateTime @default(now())
+  total       Float
+  estado      String   @default("pendiente")
+  notas       String?
+
+  proveedor Proveedor  @relation(fields: [proveedorId], references: [id])
+  items     ItemCompra[]
+}
+
+model ItemCompra {
+  id         String @id @default(uuid())
+  compraId   String
+  nombre     String
+  cantidad   Float
+  precioUnit Float
+  subtotal   Float
+
+  compra Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+}

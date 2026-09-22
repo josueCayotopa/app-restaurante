@@ -1,0 +1,194 @@
+@import "tailwindcss";
+
+@theme {
+  --color-steel-50:  #f0f4f8;
+  --color-steel-100: #d9e4ef;
+  --color-steel-200: #b3c9df;
+  --color-steel-300: #8daecf;
+  --color-steel-400: #6793bf;
+  --color-steel-500: #4682b4;
+  --color-steel-600: #386899;
+  --color-steel-700: #2a4e7e;
+  --color-steel-800: #1c3463;
+  --color-steel-900: #0e1a48;
+
+  --color-gold-50:  #fdf8e1;
+  --color-gold-100: #fceec6;
+  --color-gold-200: #f7d97a;
+  --color-gold-300: #f5d86a;
+  --color-gold-400: #f0c420;
+  --color-gold-500: #e8b400;
+  --color-gold-600: #c49b00;
+  --color-gold-700: #9e7c00;
+
+  --color-rojo-50:  #fef2f2;
+  --color-rojo-100: #fee2e2;
+  --color-rojo-200: #fecaca;
+  --color-rojo-400: #e03434;
+  --color-rojo-500: #cc2222;
+  --color-rojo-600: #aa1a1a;
+  --color-rojo-700: #8b1515;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+/* ── Variables de tema ───────────────────────────────────────────────────── */
+
+:root {
+  --fondo:          #ffffff;
+  --superficie:     #ffffff;
+  --superficie-alt: #f9fafb;
+  --borde:          #e5e7eb;
+  --borde-suave:    #f3f4f6;
+  --texto-1:        #111827;
+  --texto-2:        #374151;
+  --texto-3:        #6b7280;
+  --texto-4:        #9ca3af;
+  --input-bg:       #ffffff;
+  --scrollbar:      #8daecf;
+}
+
+[data-tema="oscuro"] {
+  --fondo:          #000000;
+  --superficie:     #1c1c1e;
+  --superficie-alt: #2c2c2e;
+  --borde:          rgba(255,255,255,0.09);
+  --borde-suave:    rgba(255,255,255,0.06);
+  --texto-1:        #f5f5f7;
+  --texto-2:        #d1d1d6;
+  --texto-3:        #98989d;
+  --texto-4:        #636366;
+  --input-bg:       #1c1c1e;
+  --scrollbar:      #48484a;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+body {
+  margin: 0;
+  background-color: var(--fondo);
+  color: var(--texto-1);
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4682b4; }
+
+/* ── Animaciones ─────────────────────────────────────────────────────────── */
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in { animation: slide-in 0.25s ease-out; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   OVERRIDES GLOBALES — TEMA OSCURO
+   Cubren todas las páginas y componentes sin tocarlos individualmente.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Fondos ── */
+[data-tema="oscuro"] .bg-white          { background-color: var(--superficie)     !important; }
+[data-tema="oscuro"] .bg-gray-50        { background-color: var(--superficie-alt) !important; }
+[data-tema="oscuro"] .bg-gray-100       { background-color: #252525               !important; }
+
+[data-tema="oscuro"] .hover\:bg-gray-50:hover  { background-color: #202020 !important; }
+[data-tema="oscuro"] .hover\:bg-gray-100:hover { background-color: #282828 !important; }
+
+/* ── Bordes ── */
+[data-tema="oscuro"] .border-gray-50    { border-color: var(--borde-suave) !important; }
+[data-tema="oscuro"] .border-gray-100   { border-color: var(--borde-suave) !important; }
+[data-tema="oscuro"] .border-gray-200   { border-color: var(--borde)       !important; }
+[data-tema="oscuro"] .border-gray-300   { border-color: #3a3a3a             !important; }
+
+/* ── Divisores ── */
+[data-tema="oscuro"] .divide-gray-50  > * + * { border-color: var(--borde-suave) !important; }
+[data-tema="oscuro"] .divide-gray-100 > * + * { border-color: var(--borde-suave) !important; }
+[data-tema="oscuro"] .divide-gray-200 > * + * { border-color: var(--borde)       !important; }
+
+/* ── Texto ── */
+[data-tema="oscuro"] .text-gray-900    { color: var(--texto-1) !important; }
+[data-tema="oscuro"] .text-gray-800    { color: var(--texto-1) !important; }
+[data-tema="oscuro"] .text-gray-700    { color: var(--texto-2) !important; }
+[data-tema="oscuro"] .text-gray-600    { color: var(--texto-3) !important; }
+[data-tema="oscuro"] .text-gray-500    { color: var(--texto-3) !important; }
+[data-tema="oscuro"] .text-gray-400    { color: var(--texto-4) !important; }
+[data-tema="oscuro"] .text-gray-300    { color: #444444         !important; }
+
+/* ── Inputs, textareas y selects ── */
+[data-tema="oscuro"] input:not([type="checkbox"]):not([type="radio"]),
+[data-tema="oscuro"] textarea,
+[data-tema="oscuro"] select {
+  background-color: var(--input-bg)  !important;
+  color:            var(--texto-1)   !important;
+  border-color:     var(--borde)     !important;
+}
+[data-tema="oscuro"] input::placeholder,
+[data-tema="oscuro"] textarea::placeholder {
+  color: var(--texto-4) !important;
+}
+[data-tema="oscuro"] input:focus,
+[data-tema="oscuro"] textarea:focus,
+[data-tema="oscuro"] select:focus {
+  border-color: #4682b4 !important;
+}
+
+/* ── Sombras (más suaves en oscuro) ── */
+[data-tema="oscuro"] .shadow-md   { box-shadow: 0 4px 12px rgba(0,0,0,0.5)  !important; }
+[data-tema="oscuro"] .shadow-lg   { box-shadow: 0 8px 24px rgba(0,0,0,0.6)  !important; }
+[data-tema="oscuro"] .shadow-xl   { box-shadow: 0 12px 32px rgba(0,0,0,0.7) !important; }
+[data-tema="oscuro"] .shadow-2xl  { box-shadow: 0 16px 40px rgba(0,0,0,0.8) !important; }
+
+/* ── Gold y Rojo — fondos suaves en oscuro ── */
+[data-tema="oscuro"] .bg-gold-50  { background-color: rgba(232,180,0,0.08)  !important; }
+[data-tema="oscuro"] .bg-gold-100 { background-color: rgba(232,180,0,0.15)  !important; }
+[data-tema="oscuro"] .bg-rojo-50  { background-color: rgba(204,34,34,0.08)  !important; }
+[data-tema="oscuro"] .bg-rojo-100 { background-color: rgba(204,34,34,0.15)  !important; }
+
+/* ── Hover genérico sobre steel-50 ── */
+[data-tema="oscuro"] .hover\:bg-steel-50:hover  { background-color: #1a2535 !important; }
+[data-tema="oscuro"] .hover\:bg-amber-50:hover  { background-color: #1e1a0a !important; }
+[data-tema="oscuro"] .hover\:bg-red-50:hover    { background-color: #1e0a0a !important; }
+[data-tema="oscuro"] .hover\:bg-gold-50:hover   { background-color: rgba(232,180,0,0.12) !important; }
+[data-tema="oscuro"] .hover\:bg-rojo-50:hover   { background-color: rgba(204,34,34,0.12) !important; }
+[data-tema="oscuro"] .border-gold-200 { border-color: rgba(232,180,0,0.35) !important; }
+[data-tema="oscuro"] .border-gold-300 { border-color: rgba(232,180,0,0.50) !important; }
+[data-tema="oscuro"] .border-rojo-200 { border-color: rgba(204,34,34,0.35) !important; }
+[data-tema="oscuro"] .border-rojo-300 { border-color: rgba(204,34,34,0.50) !important; }
+
+/* ── Badge de color cuando se usa sobre bg blanco/claro ── */
+[data-tema="oscuro"] .bg-gray-200    { background-color: #2a2a2a !important; }
+
+/* ── Colores semánticos sueltos (red/emerald/green/amber/orange de Tailwind,
+   usados para estados de error/éxito/alerta fuera de la paleta de marca) ── */
+[data-tema="oscuro"] .bg-red-50      { background-color: rgba(224,52,52,0.10)  !important; }
+[data-tema="oscuro"] .bg-red-100     { background-color: rgba(224,52,52,0.16)  !important; }
+[data-tema="oscuro"] .border-red-200 { border-color: rgba(224,52,52,0.35)      !important; }
+[data-tema="oscuro"] .hover\:bg-red-50:hover { background-color: rgba(224,52,52,0.14) !important; }
+
+[data-tema="oscuro"] .bg-emerald-50      { background-color: rgba(16,185,129,0.10)  !important; }
+[data-tema="oscuro"] .bg-green-50        { background-color: rgba(16,185,129,0.10)  !important; }
+[data-tema="oscuro"] .border-emerald-200 { border-color: rgba(16,185,129,0.35)      !important; }
+[data-tema="oscuro"] .border-green-200   { border-color: rgba(16,185,129,0.35)      !important; }
+
+[data-tema="oscuro"] .bg-amber-50      { background-color: rgba(232,180,0,0.10)  !important; }
+[data-tema="oscuro"] .border-amber-200 { border-color: rgba(232,180,0,0.35)      !important; }
+[data-tema="oscuro"] .bg-orange-50     { background-color: rgba(232,180,0,0.10)  !important; }
+[data-tema="oscuro"] .border-orange-200{ border-color: rgba(232,180,0,0.35)      !important; }
+
+/* ── Sombras muy sutiles sobre negro — el borde hace el trabajo, no la sombra ── */
+[data-tema="oscuro"] .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.4) !important; }
