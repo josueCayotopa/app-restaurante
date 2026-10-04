@@ -48,17 +48,17 @@ export function documentoAHtml(doc: Documento, ancho: number): string {
       case 'logo': return `<img class="logo" src="${location.origin}/logo.jpeg" onerror="this.remove()" />`
       case 'espacio': return '<div style="height:1em"></div>'
       case 'separador': return `<div class="sep${l.doble ? ' doble' : ''}"></div>`
-      case 'texto': return `<div style="text-align:${l.alinear === 'centro' ? 'center' : l.alinear === 'der' ? 'right' : 'left'};${l.negrita ? 'font-weight:bold;' : ''}${tamCss(l.tam)}${l.invertido ? 'background:#000;color:#fff;padding:1px 0;' : ''}">${esc(l.texto)}</div>`
-      case 'fila': return `<div class="fila" style="${l.negrita ? 'font-weight:bold;' : ''}${tamCss(l.tam)}"><span>${esc(l.izq)}</span><span>${esc(l.der)}</span></div>`
+      case 'texto': return `<div style="text-align:${l.alinear === 'centro' ? 'center' : l.alinear === 'der' ? 'right' : 'left'};${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}${l.invertido ? 'background:#000;color:#fff;-webkit-text-stroke:0;padding:1px 0;' : ''}">${esc(l.texto)}</div>`
+      case 'fila': return `<div class="fila" style="${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}"><span>${esc(l.izq)}</span><span>${esc(l.der)}</span></div>`
     }
   }).join('\n')
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(doc.titulo)}</title><style>
     @page { size: ${anchoMm} auto; margin: 0; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
-    body { width: ${anchoMm}; padding: 6px 8px 18px; font-family: 'Courier New', monospace; font-size: ${ancho <= 58 ? '10.5px' : '12.5px'}; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { width: ${anchoMm}; padding: 6px 8px 18px; font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: ${ancho <= 58 ? '11px' : '13px'}; color: #000; -webkit-text-stroke: 0.25px #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .logo { display: block; margin: 0 auto 4px; max-width: 60%; max-height: 56px; object-fit: contain; }
-    .sep { border-top: 1px dashed #000; margin: 6px 0; }
+    .sep { border-top: 2px dashed #000; margin: 6px 0; }
     .sep.doble { border-top: 3px double #000; }
     .fila { display: flex; justify-content: space-between; gap: 8px; margin: 1px 0; }
     .fila span:last-child { white-space: nowrap; }
