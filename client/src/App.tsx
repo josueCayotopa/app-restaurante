@@ -9,6 +9,7 @@ import MenuPage from './pages/menu/MenuPage'
 import CartaPublicaPage from './pages/carta/CartaPublicaPage'
 import ReservasPage from './pages/reservas/ReservasPage'
 import CajaPage from './pages/caja/CajaPage'
+import PedidosPage from './pages/pedidos/PedidosPage'
 import InventarioPage from './pages/inventario/InventarioPage'
 import ReportesPage from './pages/reportes/ReportesPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="cocina" element={<CocinaPage />} />
           <Route path="bar" element={<BarPage />} />
           <Route path="caja" element={<CajaPage />} />
+          <Route path="pedidos" element={<PedidosPage />} />
           <Route path="menu" element={<MenuPage />} />
           <Route path="carta" element={<CartaPublicaPage />} />
           <Route path="reservas" element={<ReservasPage />} />

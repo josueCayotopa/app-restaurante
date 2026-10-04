@@ -30,7 +30,7 @@ export const turnoActivo = () => prisma.turno.findFirst({ where: { estado: 'acti
 
 // Comandas sin cobrar (todo lo que no está cerrado ni cancelado)
 const comandasAbiertas = (where: Record<string, unknown> = {}) =>
-  prisma.comanda.findMany({ where: { estado: { notIn: ['cerrada', 'cancelada'] }, ...where }, select: { numeroMesa: true, mozo: true } })
+  prisma.comanda.findMany({ where: { estado: { notIn: ['cerrada', 'cancelada'] }, tipo: 'mesa', ...where }, select: { numeroMesa: true, mozo: true } })
 
 const mozosValidos = (ids: string[]) =>
   prisma.usuario.findMany({ where: { id: { in: ids }, rol: 'mozo', activo: true }, select: { id: true, nombre: true } })

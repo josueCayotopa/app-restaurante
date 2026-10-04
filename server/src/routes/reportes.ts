@@ -37,11 +37,12 @@ router.get('/resumen', autenticar, requerirRol('admin', 'cajero'), async (req: R
   const [comandas, canceladas, categorias, promociones] = await Promise.all([
     prisma.comanda.findMany({
       where: {
-        estado: 'cerrada',
-        // Pedidos cerrados antes de existir cobradaEn: se usa la última actualización
+        // Cuenta por fecha de cobro: los pedidos por teléfono pueden estar pagados y aún sin entregar.
+        // Un pedido cancelado (aunque se hubiera pagado) se reembolsa y no es venta.
         OR: [
-          { cobradaEn: { gte: inicio, lte: fin } },
-          { cobradaEn: null, actualizadaEn: { gte: inicio, lte: fin } },
+          { estado: { not: 'cancelada' }, cobradaEn: { gte: inicio, lte: fin } },
+          // Cerrados antes de existir cobradaEn: se usa la última actualización
+          { estado: 'cerrada', cobradaEn: null, actualizadaEn: { gte: inicio, lte: fin } },
         ],
       },
       include: { items: { include: { producto: { select: { categoria: true } } } }, cuentas: true },

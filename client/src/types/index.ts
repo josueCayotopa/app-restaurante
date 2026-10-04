@@ -82,8 +82,18 @@ export interface ItemComanda {
 
 export interface Comanda {
   id: string
-  mesaId: string
+  numero?: number
+  // "mesa": cuenta de una mesa · "pedido": pedido por teléfono (sin mesa; numeroMesa = 0)
+  tipo?: 'mesa' | 'pedido'
+  mesaId: string | null
   numeroMesa: number
+  clienteNombre?: string | null
+  clienteTelefono?: string | null
+  paraLlevar?: boolean
+  descartable?: number
+  horaRecojo?: string | null
+  entregadaEn?: string | null
+  motivoCancelacion?: string | null
   mesasUnidas?: number[]
   estado: EstadoComanda
   items: ItemComanda[]

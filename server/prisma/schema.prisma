@@ -128,10 +128,22 @@ model Producto {
 // ─── Comandas ────────────────────────────────────────────────────────────────
 // estado: abierta | enviada_cocina | en_preparacion | lista | cerrada | cancelada
 
+// tipo "mesa": cuenta de una mesa (se cierra al cobrar).
+// tipo "pedido": pedido por teléfono, sin mesa. Cobrar y entregar son pasos distintos:
+//   puede pagarse por adelantado o al recoger, pero NO se entrega sin pagar (no se fía).
 model Comanda {
   id            String   @id @default(uuid())
-  mesaId        String
-  numeroMesa    Int
+  numero        Int      @default(autoincrement())   // nº visible del pedido (#12)
+  tipo          String   @default("mesa")             // mesa | pedido
+  mesaId        String?                               // null en pedidos
+  numeroMesa    Int                                   // 0 en pedidos
+  clienteNombre     String?
+  clienteTelefono   String?
+  paraLlevar        Boolean   @default(false)
+  descartable       Float     @default(0)             // cargo por envases (para llevar)
+  horaRecojo        DateTime?
+  entregadaEn       DateTime?
+  motivoCancelacion String?
   estado        String   @default("abierta")
   mozo          String
   total         Float    @default(0)
@@ -156,7 +168,7 @@ model Comanda {
   creadaEn      DateTime @default(now())
   actualizadaEn DateTime @updatedAt
 
-  mesa      Mesa          @relation(fields: [mesaId], references: [id])
+  mesa      Mesa?         @relation(fields: [mesaId], references: [id])
   usuario   Usuario?      @relation(fields: [usuarioId], references: [id])
   usuarioId String?
   items     ItemComanda[]

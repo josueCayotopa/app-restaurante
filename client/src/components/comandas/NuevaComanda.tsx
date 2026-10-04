@@ -7,6 +7,7 @@ import { useMesasStore } from '../../store/mesasStore'
 import { useToastStore } from '../../store/toastStore'
 import { useTurnoStore } from '../../store/turnoStore'
 import { useAuthStore } from '../../store/authStore'
+import { etiquetaComanda } from '../../lib/etiqueta'
 import type {
   Producto, CategoriaProducto, ItemComanda,
   TipoPlato, Comanda, TipoDescuento,
@@ -229,21 +230,36 @@ function ProductoCard({
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface NuevaComandaProps {
-  mesaId: string
+  mesaId: string | null
   numeroMesa: number
   mesasUnidas?: number[]
   onCerrar: () => void
   comandaExistente?: Comanda   // si se provee → modo "agregar ítems"
+  // Pedido por teléfono: sin mesa ni turno, con datos del cliente y descartable si es para llevar
+  modoPedido?: boolean
+  onPedidoCreado?: (pedido: Comanda, pagarAhora: boolean) => void
+}
+
+// Cargo por envases de un pedido para llevar (el servidor aplica el mismo valor)
+export const DESCARTABLE_LLEVAR = 3
+
+// "19:30" → fecha de hoy a esa hora (ISO)
+function horaDeHoy(hhmm: string): string | undefined {
+  const [h, m] = hhmm.split(':').map(Number)
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return undefined
+  const d = new Date(); d.setHours(h, m, 0, 0)
+  return d.toISOString()
 }
 
 // ── Componente principal ─────────────────────────────────────────────────────
 
 export default function NuevaComanda({
-  mesaId, numeroMesa, mesasUnidas = [], onCerrar, comandaExistente,
+  mesaId, numeroMesa, mesasUnidas = [], onCerrar, comandaExistente, modoPedido = false, onPedidoCreado,
 }: NuevaComandaProps) {
   const productos          = useCartaStore((s) => s.productos)
   const categorias         = useCategoriasStore((s) => s.categorias)
   const agregarComanda     = useComandasStore((s) => s.agregarComanda)
+  const crearPedido        = useComandasStore((s) => s.crearPedido)
   const agregarItemsA      = useComandasStore((s) => s.agregarItemsAComanda)
   const devolverItem       = useComandasStore((s) => s.devolverItem)
   const cambiarEstado      = useMesasStore((s) => s.cambiarEstado)
@@ -253,6 +269,15 @@ export default function NuevaComanda({
   const esMozo             = usuario?.rol === 'mozo'
 
   const modoAgregar = !!comandaExistente
+  const esPedidoTel = modoPedido || comandaExistente?.tipo === 'pedido'
+  const etiqueta = comandaExistente ? etiquetaComanda(comandaExistente) : `Mesa ${numeroMesa}${mesasUnidas.length > 0 ? '+' + mesasUnidas.join('+') : ''}`
+
+  // Datos del pedido por teléfono
+  const [clienteNombre, setClienteNombre]     = useState('')
+  const [clienteTelefono, setClienteTelefono] = useState('')
+  const [paraLlevar, setParaLlevar]           = useState(true)
+  const [horaRecojo, setHoraRecojo]           = useState('')
+  const [pagarAhora, setPagarAhora]           = useState(false)
 
   const [busqueda, setBusqueda]           = useState('')
   const [categoriaActiva, setCategoriaActiva] = useState<CategoriaProducto | 'todas'>('fondos')
@@ -280,10 +305,12 @@ export default function NuevaComanda({
   const [enviando, setEnviando]           = useState(false)
 
   const online = useConexionStore((s) => s.conectado)
-  const sinTurno = !turno.activo && !modoAgregar
+  // Los pedidos por teléfono no dependen del turno de mozos
+  const sinTurno = !turno.activo && !modoAgregar && !modoPedido
   // El servidor también lo valida; aquí se avisa antes de armar el pedido
-  const fueraDeTurno = !sinTurno && !modoAgregar && esMozo && !!usuario && !turno.estaEnTurno(usuario.id)
-  const bloqueado = sinTurno || fueraDeTurno
+  const fueraDeTurno = !sinTurno && !modoAgregar && !modoPedido && esMozo && !!usuario && !turno.estaEnTurno(usuario.id)
+  const faltaCliente = modoPedido && !clienteNombre.trim()
+  const bloqueado = sinTurno || fueraDeTurno || faltaCliente
 
   const productosFiltrados = useMemo(() => {
     return productos.filter((p) => {
@@ -298,7 +325,8 @@ export default function NuevaComanda({
   const totalPrecio = itemsPedido.reduce((acc, i) => acc + i.cantidad * i.producto.precio, 0)
 
   const descuentoPct  = descuentos.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
-  const totalConDcto  = totalPrecio * (1 - descuentoPct / 100)
+  const descartable   = modoPedido && paraLlevar ? DESCARTABLE_LLEVAR : 0
+  const totalConDcto  = totalPrecio * (1 - descuentoPct / 100) + descartable
 
   const cantidadProducto = (productoId: string) =>
     Array.from(pedido.values())
@@ -376,7 +404,7 @@ export default function NuevaComanda({
   const confirmarDevolucion = () => {
     if (!modalDevolucion || !comandaExistente) return
     const area = devolverItem(comandaExistente.id, modalDevolucion.id)
-    const mesa = `Mesa ${numeroMesa}`
+    const mesa = etiqueta
     if (area === 'cocina') {
       agregarToast({ tipo: 'cocina', titulo: `↩ Devolución — ${mesa}`, mensaje: `${modalDevolucion.cantidad}× ${modalDevolucion.nombre} ha sido devuelto`, duracion: 6000 })
     } else if (area === 'bar') {
@@ -407,7 +435,38 @@ export default function NuevaComanda({
         guarniciones: item.guarniciones?.length ? item.guarniciones : undefined,
       }))
 
-      const mesa = `Mesa ${numeroMesa}${mesasUnidas.length > 0 ? '+' + mesasUnidas.join('+') : ''}`
+      const mesa = etiqueta
+
+      if (modoPedido) {
+        const ahora = new Date().toISOString()
+        const nuevo: Comanda = {
+          id: generarId(),
+          tipo: 'pedido',
+          mesaId: null,
+          numeroMesa: 0,
+          clienteNombre: clienteNombre.trim(),
+          clienteTelefono: clienteTelefono.trim() || null,
+          paraLlevar,
+          descartable,
+          horaRecojo: horaRecojo ? horaDeHoy(horaRecojo) ?? null : null,
+          estado: 'enviada_cocina',
+          items,
+          mozo: usuario?.nombre ?? '',
+          creadaEn: ahora,
+          actualizadaEn: ahora,
+          total: totalPrecio,
+          tipoDescuento,
+          notaGeneral: notaGeneral.trim() || undefined,
+        }
+        resultado = await crearPedido(nuevo)
+        agregarToast({ tipo: 'cocina', titulo: `🛍 Pedido enviado — ${clienteNombre.trim()}`, mensaje: items.map((i) => `${i.cantidad}× ${i.nombre}`).join(' · '), duracion: 5000 })
+        if (resultado === 'en_cola') {
+          agregarToast({ tipo: 'error', titulo: 'Guardado sin conexión', mensaje: 'El pedido se enviará solo cuando vuelva el WiFi. Cóbralo cuando aparezca con su número.', duracion: 7000 })
+        }
+        onCerrar()
+        onPedidoCreado?.(nuevo, pagarAhora && resultado === 'enviado')
+        return
+      }
 
       if (modoAgregar && comandaExistente) {
         resultado = await agregarItemsA(comandaExistente.id, items)
@@ -444,7 +503,7 @@ export default function NuevaComanda({
           notaGeneral: notaGeneral.trim() || undefined,
         }
         resultado = await agregarComanda(comanda)
-        cambiarEstado(mesaId, 'ocupada')
+        if (mesaId) cambiarEstado(mesaId, 'ocupada')
 
         const itemsCocina = items.filter((i) => i.area === 'cocina')
         const itemsBar    = items.filter((i) => i.area === 'bar')
@@ -504,13 +563,13 @@ export default function NuevaComanda({
           </button>
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-gray-800 text-sm">
-              {modoAgregar ? 'Agregar ítems' : 'Nueva Comanda'} — Mesa {numeroMesa}
-              {mesasUnidas.length > 0 && (
+              {modoPedido ? '🛍 Nuevo pedido por teléfono' : <>{modoAgregar ? 'Agregar ítems' : 'Nueva Comanda'} — {etiqueta}</>}
+              {!esPedidoTel && mesasUnidas.length > 0 && (
                 <span className="text-sky-500 font-medium text-sm ml-1">+{mesasUnidas.join('+')}</span>
               )}
             </h2>
             <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-              {!modoAgregar && (
+              {!modoAgregar && !modoPedido && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-gray-400">Mozo:</span>
                   {esMozo ? (
@@ -645,7 +704,7 @@ export default function NuevaComanda({
             {modoAgregar && itemsExistentes.length > 0 && (
               <div className="border-b border-gray-100">
                 <div className="px-4 py-2 bg-gray-50 flex items-center gap-2">
-                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex-1">En mesa</p>
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex-1">{esPedidoTel ? 'Ya pedido' : 'En mesa'}</p>
                   <span className="text-xs text-gray-400">{itemsExistentes.length} ítem(s)</span>
                 </div>
                 <div className="max-h-44 overflow-y-auto divide-y divide-gray-50">
@@ -686,6 +745,49 @@ export default function NuevaComanda({
                 {modoAgregar ? 'Agregar' : 'Pedido'}
               </h3>
             </div>
+
+            {/* Datos del cliente (pedido por teléfono) */}
+            {modoPedido && (
+              <div className="px-4 py-3 border-b border-gray-100 space-y-2 bg-steel-50">
+                <input
+                  value={clienteNombre}
+                  onChange={(e) => setClienteNombre(e.target.value)}
+                  placeholder="Nombre del cliente *"
+                  autoFocus
+                  className={`w-full text-sm bg-white border rounded-lg px-3 py-2 focus:outline-none focus:border-steel-400 ${faltaCliente && pedido.size > 0 ? 'border-rojo-400' : 'border-gray-200'}`}
+                />
+                <div className="flex gap-2">
+                  <input
+                    value={clienteTelefono}
+                    onChange={(e) => setClienteTelefono(e.target.value)}
+                    placeholder="Teléfono"
+                    inputMode="tel"
+                    className="flex-1 min-w-0 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-steel-400"
+                  />
+                  <input
+                    type="time"
+                    value={horaRecojo}
+                    onChange={(e) => setHoraRecojo(e.target.value)}
+                    title="Hora de recojo"
+                    className="w-28 text-sm bg-white border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:border-steel-400"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([[true, `🛍 Para llevar (+S/ ${DESCARTABLE_LLEVAR})`], [false, '🍽 Comer aquí']] as const).map(([v, label]) => (
+                    <button key={String(v)} onClick={() => setParaLlevar(v)}
+                      className={`py-2 rounded-lg text-xs font-semibold transition-colors ${paraLlevar === v ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                  {([[true, '💵 Paga ahora'], [false, '⏳ Paga al recoger']] as const).map(([v, label]) => (
+                    <button key={String(v)} onClick={() => setPagarAhora(v)}
+                      className={`py-2 rounded-lg text-xs font-semibold transition-colors ${pagarAhora === v ? 'bg-gold-500 text-gray-900' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Descuento — control prominente dentro de la columna de Pedido */}
             {!modoAgregar && (
@@ -732,7 +834,7 @@ export default function NuevaComanda({
                 <input
                   value={notaGeneral}
                   onChange={(e) => setNotaGeneral(e.target.value)}
-                  placeholder="Ej: mesa para celíacos, cumpleaños..."
+                  placeholder={modoPedido ? 'Ej: dirección, sin ají, cubiertos...' : 'Ej: mesa para celíacos, cumpleaños...'}
                   className="w-full text-xs bg-white text-gray-800 placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
                 />
               </div>
@@ -829,6 +931,12 @@ export default function NuevaComanda({
                   </span>
                 </div>
               )}
+              {descartable > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Descartable (para llevar)</span>
+                  <span className="font-semibold text-gray-700">S/ {descartable.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm border-t border-gray-100 pt-2">
                 <span className="font-bold text-gray-700">Total</span>
                 <span className="font-bold text-steel-700">S/ {totalConDcto.toFixed(2)}</span>
@@ -839,7 +947,9 @@ export default function NuevaComanda({
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-steel-500 text-white text-sm font-bold hover:bg-steel-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Send size={15} className={enviando ? 'animate-pulse' : ''} />
-                {enviando ? 'Enviando...' : modoAgregar ? `Agregar ${totalItems > 0 ? totalItems + ' ítem(s)' : ''}` : 'Enviar a Cocina'}
+                {enviando ? 'Enviando...'
+                  : modoPedido ? (faltaCliente ? 'Escribe el nombre del cliente' : pagarAhora ? 'Enviar y cobrar' : 'Enviar pedido')
+                  : modoAgregar ? `Agregar ${totalItems > 0 ? totalItems + ' ítem(s)' : ''}` : 'Enviar a Cocina'}
               </button>
             </div>
           </div>

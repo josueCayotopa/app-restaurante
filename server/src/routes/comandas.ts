@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
 import { getIo } from '../sockets/io'
-import { subtotalDeItems, validarPago, calcularTotales } from '../lib/cobro'
+import { subtotalDeItems, validarPago, calcularTotales, DESCARTABLE_LLEVAR } from '../lib/cobro'
+import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
 import { imprimirComandaAuto } from './impresion'
 import { resolverMozo } from './turnos'
@@ -71,14 +72,17 @@ function emitirItemsAgregados(
   // Ticket automático en las impresoras de Cocina / Bar (los ítems vienen completos: nota, precio…)
   imprimirComandaAuto(comandaMapeada as never, itemsNuevos as never, nuevo)
   // Inventario: descuenta los insumos según la receta de cada producto
-  enSegundoPlano(descontarVenta(itemsNuevos as never, (comandaMapeada as unknown as { numeroMesa: number }).numeroMesa), 'descontar venta')
+  enSegundoPlano(descontarVenta(itemsNuevos as never, etiquetaComanda(comandaMapeada as never)), 'descontar venta')
 }
 
 // ── GET /api/comandas ────────────────────────────────────────────────────────
 router.get('/', autenticar, async (req: Request, res: Response) => {
-  const { estado, mesaId, cobradaDesde, cobradaHasta } = req.query as Record<string, string | undefined>
+  const { estado, mesaId, cobradaDesde, cobradaHasta, tipo, creadaDesde } = req.query as Record<string, string | undefined>
   const where: Record<string, unknown> = {}
   if (estado) where.estado = estado
+  else if (cobradaDesde || cobradaHasta) where.estado = { not: 'cancelada' }
+  if (tipo) where.tipo = tipo
+  if (creadaDesde) where.creadaEn = { gte: new Date(creadaDesde) }
   if (mesaId) where.mesaId = mesaId
   // ?cobradaDesde=ISO&cobradaHasta=ISO → pedidos cobrados en ese rango
   if (cobradaDesde || cobradaHasta) {
@@ -183,6 +187,10 @@ router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Pro
   const { estado } = req.body
   // Cerrar solo se hace cobrando (POST /:id/cobrar), para que nunca falte el registro del pago
   if (estado === 'cerrada') { res.status(400).json({ error: 'Para cerrar la comanda hay que cobrarla en Caja' }); return }
+  if (estado === 'cancelada') {
+    const c = await prisma.comanda.findUnique({ where: { id }, select: { tipo: true } })
+    if (c?.tipo === 'pedido') { res.status(400).json({ error: 'Cancela el pedido desde Pedidos (pide el motivo)' }); return }
+  }
   if (estado === 'cancelada') {
     const pendientes = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: SIN_PREPARAR } } })
     const porId = new Map(pendientes.map((it) => [it.id, it]))
@@ -328,6 +336,9 @@ router.post('/:id/items/batch', autenticar, async (req: Request, res: Response):
     res.json(mapComanda(actual as never))
     return
   }
+  if (comanda.estado === 'cerrada' || comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda ya está cerrada' }); return }
+  // Un pedido ya pagado no admite más ítems: se cobraría menos de lo entregado
+  if (comanda.cobradaEn) { res.status(409).json({ error: 'El pedido ya está pagado: registra lo adicional como un pedido nuevo' }); return }
 
   await prisma.$transaction(
     aCrear.map((i) =>
@@ -396,7 +407,7 @@ async function cerrarComanda(id: string, datos: Record<string, unknown>) {
     data: { ...datos, estado: 'cerrada', cobradaEn: new Date() },
     include: INCLUDE_COMPLETO,
   })
-  await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'en_limpieza' } }).catch(() => {})
+  if (comanda.mesaId) await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'en_limpieza' } }).catch(() => {})
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
   return mapeada
@@ -409,16 +420,26 @@ router.post('/:id/cobrar', autenticar, requerirRol('admin', 'cajero'), async (re
   const comanda = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
   if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
   // Idempotente: si ya se cobró (doble clic, reintento), devuelve el cobro existente
-  if (comanda.estado === 'cerrada') { res.json(mapComanda(comanda as never)); return }
+  if (comanda.estado === 'cerrada' || comanda.cobradaEn) { res.json(mapComanda(comanda as never)); return }
   if (comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda está cancelada' }); return }
   if (comanda.cuentas.length > 0) { res.status(409).json({ error: 'Esta cuenta está dividida: cóbrala desde "Dividir"' }); return }
   if (!(await hayCajaAbierta())) { res.status(409).json({ error: 'La caja está cerrada: ábrela antes de cobrar' }); return }
 
   const subtotal = subtotalDeItems(comanda.items)
-  const r = validarPago(req.body, subtotal)
+  // El descartable se cobra aparte: no recibe descuento
+  const r = validarPago(req.body, subtotal, comanda.descartable)
   if ('error' in r) { res.status(400).json({ error: r.error }); return }
+  const datos = { ...r.datos, subtotal: subtotal + comanda.descartable, cobradaPor: await nombreDe(req.usuario?.id) }
 
-  const mapeada = await cerrarComanda(id, { ...r.datos, subtotal, cobradaPor: await nombreDe(req.usuario?.id) })
+  if (comanda.tipo === 'pedido') {
+    // Pedido: queda pagado (adelantado o al recoger) pero sigue abierto hasta entregarlo
+    const pagado = await prisma.comanda.update({ where: { id }, data: { ...datos, cobradaEn: new Date() }, include: INCLUDE_COMPLETO })
+    const mapeada = mapComanda(pagado as never)
+    getIo().emit('comanda:actualizada', mapeada)
+    res.json(mapeada)
+    return
+  }
+  const mapeada = await cerrarComanda(id, datos)
   res.json(mapeada)
 })
 
@@ -431,6 +452,7 @@ router.post('/:id/cuentas', autenticar, requerirRol('admin', 'cajero'), async (r
   const comanda = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
   if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
   if (comanda.estado === 'cerrada' || comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda ya está cerrada' }); return }
+  if (comanda.tipo === 'pedido') { res.status(409).json({ error: 'Los pedidos por teléfono no se dividen' }); return }
   if (comanda.cuentas.some((c) => c.estado === 'pagada')) { res.status(409).json({ error: 'Ya hay cuentas pagadas: no se puede volver a dividir' }); return }
   if (!Array.isArray(cuentas) || cuentas.length === 0) { res.status(400).json({ error: 'No hay cuentas' }); return }
 
@@ -515,6 +537,109 @@ router.patch('/:id/cuentas/:cuentaId/pagar', autenticar, requerirRol('admin', 'c
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
   res.json(mapeada)
+})
+
+
+// ── Pedidos por teléfono ──────────────────────────────────────────────────────
+// Sin mesa ni turno: el cliente llama, se registra con su nombre y va a Cocina/Bar como
+// cualquier comanda. Se cobra (adelantado o al recoger) y luego se entrega.
+// No se fía: no se entrega sin pagar.
+
+const ROLES_PEDIDOS = ['admin', 'cajero', 'mozo']
+
+// POST /api/comandas/pedidos
+// Body: { id?, clienteNombre, clienteTelefono?, paraLlevar, horaRecojo?, notaGeneral?, tipoDescuento?, items[] }
+router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: Request, res: Response): Promise<void> => {
+  const { id, items, tipoDescuento, notaGeneral, horaRecojo } = req.body
+  // Idempotente (WiFi): el mismo id no crea dos pedidos
+  if (id) {
+    const existente = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
+    if (existente) { res.status(200).json(mapComanda(existente as never)); return }
+  }
+  const clienteNombre = typeof req.body.clienteNombre === 'string' ? req.body.clienteNombre.trim() : ''
+  const clienteTelefono = typeof req.body.clienteTelefono === 'string' ? req.body.clienteTelefono.trim() || null : null
+  if (!clienteNombre) { res.status(400).json({ error: 'Escribe el nombre del cliente' }); return }
+  if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene platos ni bebidas' }); return }
+  const recojo = horaRecojo ? new Date(horaRecojo) : null
+  if (recojo && isNaN(recojo.getTime())) { res.status(400).json({ error: 'Hora de recojo inválida' }); return }
+  const paraLlevar = req.body.paraLlevar !== false   // por defecto, para llevar
+
+  const comanda = await prisma.comanda.create({
+    data: {
+      ...(id ? { id } : {}),
+      tipo: 'pedido',
+      mesaId: null,
+      numeroMesa: 0,
+      clienteNombre, clienteTelefono, paraLlevar,
+      descartable: paraLlevar ? DESCARTABLE_LLEVAR : 0,
+      horaRecojo: recojo,
+      mozo: (await nombreDe(req.usuario?.id)) ?? 'Caja',
+      usuarioId: req.usuario?.id ?? null,
+      estado: 'enviada_cocina',
+      total: subtotalDeItems(items.map((i: { cantidad: number; precioUnitario: number }) => ({ ...i, estado: 'pendiente' }))),
+      tipoDescuento: tipoDescuento ?? null,
+      notaGeneral: notaGeneral ?? null,
+      items: {
+        create: items.map((i: {
+          id?: string; productoId: string; nombre: string; cantidad: number
+          precioUnitario: number; nota?: string; area: string; tipoPlato?: string; guarniciones?: string[]
+        }) => ({
+          ...(i.id ? { id: i.id } : {}),
+          productoId: i.productoId, nombre: i.nombre, cantidad: i.cantidad, precioUnitario: i.precioUnitario,
+          nota: i.nota ?? null, area: i.area, tipoPlato: i.tipoPlato ?? null,
+          guarniciones: i.guarniciones?.length ? JSON.stringify(i.guarniciones) : null,
+        })),
+      },
+    },
+    include: INCLUDE_COMPLETO,
+  })
+  const mapeada = mapComanda(comanda as never)
+  // Cocina/Bar, impresión automática e inventario: igual que una comanda de mesa
+  emitirItemsAgregados(mapeada, mapeada.items as ItemMapeado[], true, req.body.socketId)
+  res.status(201).json(mapeada)
+})
+
+// POST /api/comandas/:id/entregar → solo si está pagado
+router.post('/:id/entregar', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params.id)
+  const c = await prisma.comanda.findUnique({ where: { id } })
+  if (!c || c.tipo !== 'pedido') { res.status(404).json({ error: 'Pedido no encontrado' }); return }
+  if (c.estado === 'cancelada') { res.status(409).json({ error: 'El pedido está cancelado' }); return }
+  if (c.estado === 'cerrada') { res.json(mapComanda((await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })) as never)); return }
+  if (!c.cobradaEn) { res.status(409).json({ error: 'No se fía: cobra el pedido antes de entregarlo' }); return }
+  const entregado = await prisma.comanda.update({
+    where: { id }, data: { estado: 'cerrada', entregadaEn: new Date() }, include: INCLUDE_COMPLETO,
+  })
+  const mapeada = mapComanda(entregado as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  res.json(mapeada)
+})
+
+// POST /api/comandas/:id/cancelar { motivo } → si estaba pagado, se devuelve el dinero
+// (el cobro deja de contar en ventas y en el arqueo de caja)
+router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params.id)
+  const motivo = typeof req.body?.motivo === 'string' ? req.body.motivo.trim() : ''
+  const c = await prisma.comanda.findUnique({ where: { id } })
+  if (!c || c.tipo !== 'pedido') { res.status(404).json({ error: 'Pedido no encontrado' }); return }
+  if (c.estado === 'cerrada') { res.status(409).json({ error: 'El pedido ya se entregó: no se puede cancelar' }); return }
+  if (c.estado === 'cancelada') { res.json(mapComanda((await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })) as never)); return }
+  if (!motivo) { res.status(400).json({ error: 'Indica el motivo de la cancelación' }); return }
+
+  // Lo que la cocina no empezó vuelve al inventario
+  const pendientes = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: SIN_PREPARAR } } })
+  const porId = new Map(pendientes.map((it) => [it.id, it]))
+  enSegundoPlano(devolverVenta(pendientes.map((it) => it.id), (itemId) => {
+    const it = porId.get(itemId)!
+    return `Pedido #${c.numero} cancelado · ${it.cantidad}× ${it.nombre}`
+  }), 'devolver pedido cancelado')
+
+  const cancelado = await prisma.comanda.update({
+    where: { id }, data: { estado: 'cancelada', motivoCancelacion: motivo }, include: INCLUDE_COMPLETO,
+  })
+  const mapeada = mapComanda(cancelado as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  res.json({ ...mapeada, reembolso: c.cobradaEn ? c.totalCobrado : 0 })
 })
 
 

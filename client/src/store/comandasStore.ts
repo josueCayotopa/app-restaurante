@@ -101,6 +101,9 @@ interface ComandasState {
   cargarComandas:         () => Promise<void>
   setComandaActiva:       (comanda: Comanda | null) => void
   agregarComanda:         (comanda: Comanda) => Promise<ResultadoEnvio>
+  crearPedido:            (pedido: Comanda) => Promise<ResultadoEnvio>
+  entregarPedido:         (id: string) => Promise<Comanda>
+  cancelarPedido:         (id: string, motivo: string) => Promise<Comanda & { reembolso: number }>
   actualizarEstadoItem:   (comandaId: string, itemId: string, estado: EstadoItem) => void
   actualizarEstadoComanda:(comandaId: string, estado: EstadoComanda) => void
   agregarItem:            (comandaId: string, item: ItemComanda) => void
@@ -208,6 +211,33 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       items: comanda.items.map(itemDto),
     }
     return get().enviarOEncolar({ metodo: 'POST', ruta: '/api/comandas', body, efecto: { tipo: 'crear', comanda } })
+  },
+
+  // Pedido por teléfono: mismo envío con cola offline (el id lo hace idempotente)
+  crearPedido: async (pedido) => {
+    const body = {
+      id: pedido.id,
+      clienteNombre: pedido.clienteNombre,
+      clienteTelefono: pedido.clienteTelefono,
+      paraLlevar: pedido.paraLlevar,
+      horaRecojo: pedido.horaRecojo,
+      tipoDescuento: pedido.tipoDescuento,
+      notaGeneral: pedido.notaGeneral,
+      items: pedido.items.map(itemDto),
+    }
+    return get().enviarOEncolar({ metodo: 'POST', ruta: '/api/comandas/pedidos', body, efecto: { tipo: 'crear', comanda: pedido } })
+  },
+
+  entregarPedido: async (id) => {
+    const comanda = await apiFetch<Comanda>(`/api/comandas/${id}/entregar`, { method: 'POST', body: '{}' })
+    get().aplicarComandaRemota(comanda)
+    return comanda
+  },
+
+  cancelarPedido: async (id, motivo) => {
+    const comanda = await apiFetch<Comanda & { reembolso: number }>(`/api/comandas/${id}/cancelar`, { method: 'POST', body: JSON.stringify({ motivo }) })
+    get().aplicarComandaRemota(comanda)
+    return comanda
   },
 
   actualizarEstadoItem: (comandaId, itemId, estado) => {

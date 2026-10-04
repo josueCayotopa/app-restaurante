@@ -7,6 +7,8 @@ export interface ItemTicket {
 }
 export interface ComandaTicket {
   numeroMesa: number; mesasUnidas?: number[] | null; mozo: string; notaGeneral?: string | null
+  tipo?: string; numero?: number; clienteNombre?: string | null; clienteTelefono?: string | null
+  paraLlevar?: boolean; descartable?: number; horaRecojo?: Date | string | null
   creadaEn: Date | string; items: ItemTicket[]
   subtotal?: number | null; descuentoPct?: number; descuentoMonto?: number; propina?: number
   totalCobrado?: number | null; total: number; metodoPago?: string | null
@@ -35,6 +37,9 @@ const fechaHora = (d: Date | string) => {
 }
 const mesaLabel = (c: { numeroMesa: number; mesasUnidas?: number[] | null }) =>
   `${c.numeroMesa}${c.mesasUnidas?.length ? ` + ${c.mesasUnidas.join(' + ')}` : ''}`
+// "Mesa 4 + 5" o "Pedido #12 · Juan" (pedidos por teléfono)
+export const etiquetaComanda = (c: { tipo?: string; numero?: number; clienteNombre?: string | null; numeroMesa: number; mesasUnidas?: number[] | null }) =>
+  c.tipo === 'pedido' ? `Pedido #${c.numero ?? ''}${c.clienteNombre ? ` · ${c.clienteNombre}` : ''}` : `Mesa ${mesaLabel(c)}`
 const encabezado = (titulo: string): Linea[] => [
   { t: 'logo' },
   texto('CHICHARRONERIA CADE', { alinear: 'centro', negrita: true, tam: 'alto' }),
@@ -47,9 +52,15 @@ const encabezado = (titulo: string): Linea[] => [
 export function ticketComanda(c: ComandaTicket, items: ItemTicket[], area: 'cocina' | 'bar', nuevo: boolean, reimpresion = false): Documento {
   const l: Linea[] = [
     texto(area === 'cocina' ? 'COCINA' : 'BAR', { alinear: 'centro', negrita: true, invertido: true }),
-    texto(`MESA ${mesaLabel(c)}`, { alinear: 'centro', negrita: true, tam: 2 }),
+    ...(c.tipo === 'pedido'
+      ? [
+          texto(c.paraLlevar ? 'PARA LLEVAR' : 'PEDIDO - COMER AQUI', { alinear: 'centro', negrita: true, tam: 2 }),
+          texto(`#${c.numero ?? ''} ${c.clienteNombre ?? ''}`.trim(), { alinear: 'centro', negrita: true, tam: 'alto' }),
+          ...(c.horaRecojo ? [texto(`Recoge: ${horaCorta(c.horaRecojo)}`, { alinear: 'centro', negrita: true })] : []),
+        ]
+      : [texto(`MESA ${mesaLabel(c)}`, { alinear: 'centro', negrita: true, tam: 2 })]),
     texto(reimpresion ? '** REIMPRESION **' : nuevo ? 'PEDIDO NUEVO' : '** ADICION **', { alinear: 'centro', negrita: true }),
-    fila(`Mozo: ${c.mozo}`, horaCorta(new Date())),
+    fila(`${c.tipo === 'pedido' ? 'Tomó' : 'Mozo'}: ${c.mozo}`, horaCorta(new Date())),
     separador(true),
   ]
   for (const i of items) {
@@ -61,7 +72,7 @@ export function ticketComanda(c: ComandaTicket, items: ItemTicket[], area: 'coci
   }
   if (c.notaGeneral) l.push(separador(), texto(`NOTA: ${c.notaGeneral}`, { negrita: true }))
   l.push(separador(true))
-  return { titulo: `${area === 'cocina' ? 'Cocina' : 'Bar'} · Mesa ${mesaLabel(c)}${nuevo ? '' : ' (adición)'}`, lineas: l }
+  return { titulo: `${area === 'cocina' ? 'Cocina' : 'Bar'} · ${etiquetaComanda(c)}${nuevo ? '' : ' (adición)'}`, lineas: l }
 }
 
 // ── Boleta de cobro ─────────────────────────────────────────────────────────
@@ -73,8 +84,10 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
   const metodo = c.metodoPago ?? 'efectivo'
   const l: Linea[] = [
     ...encabezado('Ticket de consumo'),
-    fila('Mesa', mesaLabel(c)),
-    fila('Mozo', c.mozo),
+    ...(c.tipo === 'pedido'
+      ? [fila('Pedido', `#${c.numero ?? ''} ${c.paraLlevar ? '(para llevar)' : '(local)'}`), fila('Cliente', c.clienteNombre ?? '-'),
+         ...(c.clienteTelefono ? [fila('Teléfono', c.clienteTelefono)] : [])]
+      : [fila('Mesa', mesaLabel(c)), fila('Mozo', c.mozo)]),
     ...(c.cobradaPor ? [fila('Cajero', c.cobradaPor)] : []),
     fila('Fecha', fechaHora(c.cobradaEn ?? new Date())),
     separador(),
@@ -82,6 +95,8 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
   for (const i of c.items.filter((x) => x.estado !== 'cancelado' && x.estado !== 'devuelto')) {
     l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
   }
+  const descartable = c.descartable ?? 0
+  if (descartable > 0) l.push(fila('Descartable (envases)', S(descartable)))
   l.push(separador(), fila('Subtotal', S(subtotal)))
   if (descuento > 0) l.push(fila(`Descuento${c.descuentoPct ? ` (${c.descuentoPct}%)` : ''}`, `-${S(descuento)}`))
   if (propina > 0) l.push(fila('Propina', S(propina)))
@@ -97,7 +112,7 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
   if (metodo === 'dividida') for (const ct of c.cuentas ?? []) l.push(fila(`  Cuenta ${ct.numero} - ${METODO[ct.metodoPago ?? ''] ?? '-'}`, S(ct.total)))
   l.push(espacio, texto('¡Gracias por su visita!', { alinear: 'centro', negrita: true }), texto('Un restaurante para la familia', { alinear: 'centro' }), texto('Ebenezer', { alinear: 'centro', negrita: true, tam: 'alto' }), espacio, espacio)
   return {
-    titulo: `Cobro · Mesa ${mesaLabel(c)} · ${S(total)}`,
+    titulo: `Cobro · ${etiquetaComanda(c)} · ${S(total)}`,
     lineas: l,
     // La gaveta se abre solo si entró efectivo
     abrirGaveta: abrirGaveta && (metodo === 'efectivo' || metodo === 'mixto' || (c.montoEfectivo ?? 0) > 0),

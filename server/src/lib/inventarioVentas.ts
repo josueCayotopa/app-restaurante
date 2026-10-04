@@ -49,7 +49,8 @@ async function aplicar(movs: Movimiento[], tipo: 'salida' | 'entrada') {
   getIo().emit('inventario:actualizado')
 }
 
-export async function descontarVenta(items: ItemVendido[], numeroMesa: number) {
+// origen: "Mesa 4" o "Pedido #12 · Juan"
+export async function descontarVenta(items: ItemVendido[], origen: string) {
   if (items.length === 0) return
   const recetas = await prisma.recetaItem.findMany({ where: { productoId: { in: [...new Set(items.map((i) => i.productoId))] } } })
   if (recetas.length === 0) return
@@ -62,7 +63,7 @@ export async function descontarVenta(items: ItemVendido[], numeroMesa: number) {
   for (const item of items) {
     if (yaDescontados.has(item.id)) continue
     for (const r of recetas.filter((x) => x.productoId === item.productoId)) {
-      movs.push({ insumoId: r.insumoId, cantidad: r.cantidad * item.cantidad, motivo: `Venta · Mesa ${numeroMesa} · ${item.cantidad}× ${item.nombre}`, itemComandaId: item.id })
+      movs.push({ insumoId: r.insumoId, cantidad: r.cantidad * item.cantidad, motivo: `Venta · ${origen} · ${item.cantidad}× ${item.nombre}`, itemComandaId: item.id })
     }
   }
   await aplicar(movs, 'salida')

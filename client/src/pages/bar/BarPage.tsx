@@ -6,6 +6,7 @@ import { reimprimirComanda } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import type { Comanda, ItemComanda, EstadoItem } from '../../types'
 import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer } from 'lucide-react'
+import { etiquetaComanda, insigniaComanda, esPedido } from '../../lib/etiqueta'
 
 function tiempoTranscurrido(isoString: string): { minutos: number; label: string; urgente: boolean } {
   const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000)
@@ -142,11 +143,15 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
       <div className={`px-4 py-3 flex items-center justify-between ${headerBg}`}>
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${headerChip}`}>
-            {comanda.numeroMesa}
+            {insigniaComanda(comanda)}
           </div>
           <div>
-            <p className={`text-sm font-bold ${headerText}`}>Mesa {comanda.numeroMesa}</p>
-            <p className={`text-xs ${headerMuted}`}>{comanda.mozo}</p>
+            <p className={`text-sm font-bold ${headerText}`}>{etiquetaComanda(comanda)}</p>
+            <p className={`text-xs ${headerMuted}`}>
+              {esPedido(comanda)
+                ? <><b>{comanda.paraLlevar ? '🛍 PARA LLEVAR' : 'COMER AQUÍ'}</b>{comanda.horaRecojo ? ` · recoge ${new Date(comanda.horaRecojo).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</>
+                : comanda.mozo}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">

@@ -10,6 +10,7 @@ import { imprimirCobro } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import { ApiError } from '../../lib/api'
 import type { Comanda, CuentaParcial, MetodoPago } from '../../types'
+import { etiquetaComanda } from '../../lib/etiqueta'
 
 const COLORES_CUENTA = [
   { bg: 'bg-steel-500',   text: 'text-white', border: 'border-steel-500'   },
@@ -231,7 +232,7 @@ export default function ModalDividirCuenta({ comanda, onCerrar, onCobrado }: Pro
           </div>
           <h2 className="text-xl font-bold text-gray-800 mb-1">¡Cuentas cerradas!</h2>
           <p className="text-sm text-gray-400 mb-4">
-            Mesa {comanda.numeroMesa} · {cuentasActuales.length} cuentas cobradas
+            {etiquetaComanda(comanda)} · {cuentasActuales.length} cuentas cobradas
           </p>
           <div className="bg-gray-700 rounded-xl p-4 mb-6 space-y-2 text-left">
             {cuentasActuales.map((c, i) => (
@@ -271,7 +272,7 @@ export default function ModalDividirCuenta({ comanda, onCerrar, onCobrado }: Pro
         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[92vh]">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <div>
-              <h2 className="font-bold text-gray-800">Cobro dividido — Mesa {comanda.numeroMesa}</h2>
+              <h2 className="font-bold text-gray-800">Cobro dividido — {etiquetaComanda(comanda)}</h2>
               <p className="text-xs text-gray-400">{cuentasActuales.length} cuentas · {comanda.mozo}</p>
             </div>
             <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
@@ -361,7 +362,7 @@ export default function ModalDividirCuenta({ comanda, onCerrar, onCobrado }: Pro
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
-            <h2 className="font-bold text-gray-800">Dividir cuenta — Mesa {comanda.numeroMesa}</h2>
+            <h2 className="font-bold text-gray-800">Dividir cuenta — {etiquetaComanda(comanda)}</h2>
             <p className="text-xs text-gray-400">
               {comanda.mozo} · {itemsActivos.length} ítems · S/ {comanda.total.toFixed(2)}
             </p>

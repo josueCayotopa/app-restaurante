@@ -8,6 +8,7 @@ import { useToastStore } from '../../store/toastStore'
 import { ApiError } from '../../lib/api'
 import { useCartaPublicaStore } from '../../store/cartaPublicaStore'
 import type { Comanda, EstadoComanda } from '../../types'
+import { etiquetaComanda, insigniaComanda } from '../../lib/etiqueta'
 import {
   Clock, ClipboardList, CheckCircle, ChefHat, XCircle, CreditCard,
   Plus, PlayCircle, StopCircle, Users, Tag, Loader2,
@@ -54,10 +55,10 @@ function TarjetaComanda({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           <div className="w-9 h-9 bg-gold-500 text-gray-900 rounded-lg flex items-center justify-center font-bold text-sm shrink-0">
-            {comanda.numeroMesa}
+            {insigniaComanda(comanda)}
           </div>
           <div>
-            <p className="font-semibold text-gray-800 text-sm">Mesa {comanda.numeroMesa}</p>
+            <p className="font-semibold text-gray-800 text-sm">{etiquetaComanda(comanda)}</p>
             <p className="text-xs text-gray-400">{comanda.mozo}</p>
           </div>
         </div>

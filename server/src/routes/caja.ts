@@ -17,11 +17,12 @@ async function calcularArqueo(sesion: { id: string; abiertaEn: Date; cerradaEn: 
   const hasta = sesion.cerradaEn ?? new Date()
   const [comandas, movimientos, pendientes] = await Promise.all([
     prisma.comanda.findMany({
-      where: { estado: 'cerrada', cobradaEn: { gte: sesion.abiertaEn, lte: hasta } },
+      // Incluye pedidos pagados por adelantado (aún sin entregar); los cancelados se reembolsan
+      where: { estado: { not: 'cancelada' }, cobradaEn: { gte: sesion.abiertaEn, lte: hasta } },
       include: { cuentas: true, items: true },
     }),
     prisma.movimientoCaja.findMany({ where: { sesionId: sesion.id }, orderBy: { creadoEn: 'asc' } }),
-    prisma.comanda.count({ where: { estado: { notIn: ['cerrada', 'cancelada'] } } }),
+    prisma.comanda.count({ where: { estado: { notIn: ['cerrada', 'cancelada'] }, cobradaEn: null } }),
   ])
   const metodos = { efectivo: 0, tarjeta: 0, yape_plin: 0 }
   let ventasNetas = 0, propinas = 0

@@ -131,7 +131,7 @@ router.post('/impresion/comanda/:id', autenticar, async (req: Request, res: Resp
 // POST /api/impresion/cobro/:id — boleta del cobro (y gaveta si entró efectivo)
 router.post('/impresion/cobro/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const c = await comandaParaTicket(String(req.params.id))
-  if (!c || c.estado !== 'cerrada') { res.status(404).json({ error: 'Cobro no encontrado' }); return }
+  if (!c || !c.cobradaEn || c.estado === 'cancelada') { res.status(404).json({ error: 'Cobro no encontrado' }); return }
   await responder(res, 'caja', ticketCobro(c, req.body.abrirGaveta !== false))
 })
 

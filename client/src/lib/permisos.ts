@@ -1,13 +1,13 @@
 // Qué vistas puede ver cada rol. El admin ve todo; el resto solo su(s) módulo(s).
 export const RUTAS_POR_ROL: Record<string, string[]> = {
   admin: [
-    '/', '/comandas', '/cocina', '/bar', '/caja', '/carta', '/menu',
+    '/', '/comandas', '/pedidos', '/cocina', '/bar', '/caja', '/carta', '/menu',
     '/reservas', '/inventario', '/proveedores', '/usuarios', '/reportes', '/configuracion',
   ],
-  mozo: ['/', '/comandas', '/reservas', '/carta', '/configuracion'],
+  mozo: ['/', '/comandas', '/pedidos', '/reservas', '/carta', '/configuracion'],
   cocinero: ['/cocina', '/configuracion'],
   bartender: ['/bar', '/configuracion'],
-  cajero: ['/caja', '/configuracion'],
+  cajero: ['/caja', '/pedidos', '/configuracion'],
 }
 
 export function rutasPermitidas(rol: string | undefined): string[] {

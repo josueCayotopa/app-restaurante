@@ -5,6 +5,7 @@ import { useMesasStore } from '../store/mesasStore'
 import { useToastStore } from '../store/toastStore'
 import { reproducirAlerta } from '../lib/sound'
 import type { Comanda, ItemComanda, TipoPlato, EstadoComanda } from '../types'
+import { etiquetaComanda } from '../lib/etiqueta'
 
 interface ItemResumen {
   cantidad: number
@@ -36,6 +37,13 @@ interface ItemActualizadoPayload {
   origenSocketId?: string
 }
 
+// " — Mesa 4" / " — Pedido #12 · Juan" (busca la comanda en el store para saber si es pedido)
+function etiquetaDe(comandaId: string, numeroMesa?: number) {
+  const c = useComandasStore.getState().comandas.find((x) => x.id === comandaId)
+  if (c) return ` — ${etiquetaComanda(c)}`
+  return numeroMesa ? ` — Mesa ${numeroMesa}` : ''
+}
+
 function formatearItem(i: ItemResumen): string {
   let d = `${i.cantidad}× ${i.nombre}`
   if (i.tipoPlato) d += ` [${i.tipoPlato === 'plato' ? 'Plato' : 'Fuente'}]`
@@ -61,7 +69,7 @@ export function useSocketSync() {
       if (data.item.estado === 'listo') {
         agregarToast({
           tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
-          titulo: `✅ Listo para servir${data.numeroMesa ? ` — Mesa ${data.numeroMesa}` : ''}`,
+          titulo: `✅ Listo para servir${etiquetaDe(data.comandaId, data.numeroMesa)}`,
           mensaje: `${data.item.cantidad}× ${data.item.nombre} está listo`,
           duracion: 6000,
         })
@@ -73,7 +81,7 @@ export function useSocketSync() {
       aplicarComandaRemota(data.comanda)
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
       if (esPropio) return
-      const mesa = `Mesa ${data.comanda.numeroMesa}`
+      const mesa = etiquetaComanda(data.comanda)
       if (data.itemsCocina.length > 0) {
         agregarToast({
           tipo: 'cocina',
@@ -100,7 +108,7 @@ export function useSocketSync() {
       if (esPropio) return
       agregarToast({
         tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
-        titulo: `↩ Devolución — Mesa ${data.numeroMesa}`,
+        titulo: `↩ Devolución${etiquetaDe(data.comandaId, data.numeroMesa)}`,
         mensaje: `${data.item.cantidad}× ${data.item.nombre} ha sido devuelto`,
         duracion: 6000,
       })

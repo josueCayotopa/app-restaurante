@@ -3,6 +3,9 @@
 export const METODOS_PAGO = ['efectivo', 'tarjeta', 'yape_plin', 'mixto'] as const
 export const METODOS_RESTO = ['tarjeta', 'yape_plin'] as const
 
+// Cargo por envases cuando un pedido es para llevar (uno por pedido)
+export const DESCARTABLE_LLEVAR = 3
+
 const redondear = (n: number) => Math.round(n * 100) / 100
 
 // Ítems que cuentan para cobrar (los cancelados y devueltos no se cobran)
@@ -14,9 +17,10 @@ export function subtotalDeItems(items: { estado: string; cantidad: number; preci
   )
 }
 
-export function calcularTotales(subtotal: number, descuentoPct: number, propina: number) {
+// extra = cargos que no reciben descuento (el descartable de un pedido para llevar)
+export function calcularTotales(subtotal: number, descuentoPct: number, propina: number, extra = 0) {
   const descuentoMonto = redondear(subtotal * (descuentoPct / 100))
-  return { descuentoMonto, totalCobrado: redondear(subtotal - descuentoMonto + propina) }
+  return { descuentoMonto, totalCobrado: redondear(subtotal - descuentoMonto + extra + propina) }
 }
 
 type DatosPago = {
@@ -25,7 +29,7 @@ type DatosPago = {
 }
 
 // Valida lo que manda Caja y devuelve los campos del cobro ya calculados por el servidor
-export function validarPago(body: DatosPago, subtotal: number) {
+export function validarPago(body: DatosPago, subtotal: number, extra = 0) {
   const metodoPago = String(body.metodoPago ?? '')
   if (!(METODOS_PAGO as readonly string[]).includes(metodoPago)) return { error: 'Método de pago inválido' }
   const descuentoPct = Number(body.descuentoPct ?? 0)
@@ -33,7 +37,7 @@ export function validarPago(body: DatosPago, subtotal: number) {
   if (!(descuentoPct >= 0 && descuentoPct <= 100)) return { error: 'El descuento debe estar entre 0 y 100%' }
   if (!(propina >= 0)) return { error: 'La propina no puede ser negativa' }
 
-  const { descuentoMonto, totalCobrado } = calcularTotales(subtotal, descuentoPct, propina)
+  const { descuentoMonto, totalCobrado } = calcularTotales(subtotal, descuentoPct, propina, extra)
   let montoEfectivo: number | null = null
   let metodoResto: string | null = null
   let montoRecibido: number | null = null
