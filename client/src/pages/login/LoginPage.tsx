@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
+import { esErrorDeRed } from '../../lib/api'
 
 const CREDENCIALES_KEY = 'sgr_credenciales'
 
@@ -38,7 +39,10 @@ export default function LoginPage() {
       }
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al iniciar sesión')
+      // Sin respuesta del servidor (caído, sin internet, certificado) → mensaje claro, no el error técnico
+      setError(esErrorDeRed(err)
+        ? 'No se puede conectar con el servidor. Revisa tu conexión o avisa al administrador.'
+        : err instanceof Error ? err.message : 'Error al iniciar sesión')
     }
   }
 
@@ -135,12 +139,6 @@ export default function LoginPage() {
               )}
             </button>
           </form>
-        </div>
-
-        {/* Credenciales de prueba */}
-        <div className="mt-4 text-center space-y-1">
-          <p className="text-gray-600 text-xs">Admin: admin@cade.pe / admin123</p>
-          <p className="text-gray-600 text-xs">Mozo: carlos@cade.pe / mozo123</p>
         </div>
 
         <p className="text-center text-gray-700 text-xs mt-4">
