@@ -4,10 +4,11 @@ import path from 'path'
 import crypto from 'crypto'
 import fs from 'fs'
 import { autenticar } from '../middleware/auth'
+import { CARPETA_UPLOADS } from '../lib/rutas'
 
 const router = Router()
 
-const uploadsDir = path.join(__dirname, '..', '..', 'uploads')
+const uploadsDir = CARPETA_UPLOADS
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
 const TIPOS_PERMITIDOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']

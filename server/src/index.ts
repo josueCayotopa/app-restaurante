@@ -10,6 +10,7 @@ import { PrismaClient } from '@prisma/client'
 import { errorHandler } from './middleware/errorHandler'
 import { registrarHandlers } from './sockets/handlers'
 import { setIo } from './sockets/io'
+import { CARPETA_UPLOADS, CARPETA_CLIENTE } from './lib/rutas'
 
 import authRoutes        from './routes/auth'
 import mesasRoutes       from './routes/mesas'
@@ -52,7 +53,7 @@ setIo(io)
 // ── Middlewares globales ──────────────────────────────────────────────────
 app.use(cors({ origin: origenPermitido }))
 app.use(express.json())
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')))
+app.use('/uploads', express.static(CARPETA_UPLOADS))
 
 // ── Health check ──────────────────────────────────────────────────────────
 app.get('/api/health', async (_req, res) => {
@@ -86,7 +87,7 @@ app.use('/api',             impresionRoutes)   // /api/impresoras y /api/impresi
 // ── App web (PWA) compilada ───────────────────────────────────────────────
 // Si existe client/dist (npm run build en client), el mismo servidor la sirve:
 // las tablets del local solo abren http://IP-DE-ESTA-PC:3001
-const distCliente = path.join(__dirname, '..', '..', 'client', 'dist')
+const distCliente = CARPETA_CLIENTE
 if (fs.existsSync(path.join(distCliente, 'index.html'))) {
   app.use(express.static(distCliente, {
     // sw.js e index.html nunca en caché del navegador: así las tablets reciben las actualizaciones
