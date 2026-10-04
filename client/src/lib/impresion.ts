@@ -45,7 +45,7 @@ export function documentoAHtml(doc: Documento, ancho: number): string {
   const anchoMm = `${ancho}mm`
   const cuerpo = doc.lineas.map((l) => {
     switch (l.t) {
-      case 'logo': return `<img class="logo" src="${location.origin}/logo.jpeg" onerror="this.remove()" />`
+      case 'logo': return `<img class="logo" src="${location.origin}/logo-impresion.png" onerror="this.remove()" />`
       case 'espacio': return '<div style="height:1em"></div>'
       case 'separador': return `<div class="sep${l.doble ? ' doble' : ''}"></div>`
       case 'texto': return `<div style="text-align:${l.alinear === 'centro' ? 'center' : l.alinear === 'der' ? 'right' : 'left'};${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}${l.invertido ? 'background:#000;color:#fff;-webkit-text-stroke:0;padding:1px 0;' : ''}${l.recuadro ? 'border:2mm solid #000;padding:1.5mm 2mm;margin:2mm 0;' : ''}">${esc(l.texto)}</div>`
@@ -62,7 +62,11 @@ export function documentoAHtml(doc: Documento, ancho: number): string {
     .sep.doble { border-top: 3px double #000; }
     .fila { display: flex; justify-content: space-between; gap: 8px; margin: 1px 0; }
     .fila span:last-child { white-space: nowrap; }
-  </style></head><body>${cuerpo}</body></html>`
+    /* Margen final: el driver de muchas térmicas recorta el blanco del final y corta pegado
+       al último texto; un punto mínimo al final lo obliga a avanzar el papel hasta ahí. */
+    .fin { height: 15mm; }
+    .marca-fin { text-align: center; font-size: 6px; line-height: 1; -webkit-text-stroke: 0; }
+  </style></head><body>${cuerpo}<div class="fin"></div><div class="marca-fin">.</div></body></html>`
 }
 
 // Imprime con el navegador usando un iframe oculto (no lo bloquea el bloqueador de ventanas
