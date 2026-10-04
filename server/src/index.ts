@@ -38,7 +38,9 @@ const prisma = new PrismaClient()
 // en desarrollo (el puerto de Vite puede variar si 5173 está ocupado).
 const origenPermitido = (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
   if (!origin) { cb(null, true); return }
-  if (process.env.CLIENT_ORIGIN && origin === process.env.CLIENT_ORIGIN) { cb(null, true); return }
+  // Dominio(s) de la app web en producción, separados por coma (ej. https://sistema.chicharroneriacade.com)
+  const permitidos = (process.env.CLIENT_ORIGIN ?? '').split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean)
+  if (permitidos.includes(origin)) { cb(null, true); return }
   if (/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) { cb(null, true); return }
   // Tablets y pantallas dentro del local (red privada: 192.168.x.x, 10.x.x.x, 172.16-31.x.x)
   if (/^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)) { cb(null, true); return }
