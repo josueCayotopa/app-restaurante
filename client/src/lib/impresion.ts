@@ -57,7 +57,7 @@ export function documentoAHtml(doc: Documento, ancho: number): string {
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
     body { width: ${anchoMm}; padding: 6px 8px 18px; font-family: Arial, Helvetica, sans-serif; font-weight: 700; font-size: ${ancho <= 58 ? '11px' : '13px'}; color: #000; -webkit-text-stroke: 0.25px #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .logo { display: block; margin: 0 auto 4px; max-width: 60%; max-height: 56px; object-fit: contain; }
+    .logo { display: block; margin: 0 auto 6px; max-width: 100%; max-height: 112px; object-fit: contain; }
     .sep { border-top: 2px dashed #000; margin: 6px 0; }
     .sep.doble { border-top: 3px double #000; }
     .fila { display: flex; justify-content: space-between; gap: 8px; margin: 1px 0; }
