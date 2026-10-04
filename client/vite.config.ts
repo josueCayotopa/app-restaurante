@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 5173,
+    host: true,   // accesible desde tablets de la red local (http://IP-DE-LA-PC:5173)
     proxy: {
       '/api': 'http://localhost:3001',
       '/socket.io': { target: 'http://localhost:3001', ws: true },

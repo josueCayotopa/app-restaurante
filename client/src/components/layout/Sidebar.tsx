@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid, ClipboardList, ChefHat, UtensilsCrossed,
-  BarChart3, Settings, CalendarDays, DollarSign, Package,
+  BarChart3, Settings, CalendarDays, Wallet, Package,
   Truck, Users, Beer, MoreHorizontal, X, BookOpen, LogOut,
   ChevronLeft, ChevronRight,
 } from 'lucide-react'
@@ -16,7 +16,7 @@ const navItems = [
   { to: '/comandas',      icon: ClipboardList, label: 'Comandas'    },
   { to: '/cocina',        icon: ChefHat,       label: 'Cocina'      },
   { to: '/bar',           icon: Beer,          label: 'Bar'         },
-  { to: '/caja',          icon: DollarSign,    label: 'Caja'        },
+  { to: '/caja',          icon: Wallet,    label: 'Caja'        },
   { to: '/carta',          icon: BookOpen,        label: 'Carta'     },
   { to: '/menu',           icon: UtensilsCrossed, label: 'Productos'  },
   { to: '/reservas',      icon: CalendarDays,  label: 'Reservas'    },
@@ -61,7 +61,7 @@ export default function Sidebar() {
   return (
     <>
       {/* ── Desktop sidebar ────────────────────────────────── */}
-      <aside className={`hidden lg:flex ${colapsado ? 'w-16' : 'w-56'} ${sidebarBg} flex-col h-screen fixed left-0 top-0 z-40 border-r ${sidebarBorde} transition-all duration-200 relative`}>
+      <aside className={`hidden lg:flex ${colapsado ? 'w-16' : 'w-56'} ${sidebarBg} flex-col h-screen fixed left-0 top-0 z-40 border-r ${sidebarBorde} transition-all duration-200`}>
 
         {/* Botón colapsar/expandir */}
         <button

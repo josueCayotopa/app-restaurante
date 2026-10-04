@@ -1,12 +1,36 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { autenticar } from '../middleware/auth'
+import { autenticar, requerirRol } from '../middleware/auth'
 import { getIo } from '../sockets/io'
+import { subtotalDeItems, validarPago, calcularTotales } from '../lib/cobro'
+import { hayCajaAbierta } from './caja'
+import { imprimirComandaAuto } from './impresion'
+import { resolverMozo } from './turnos'
+import { descontarVenta, devolverVenta, enSegundoPlano, SIN_PREPARAR } from '../lib/inventarioVentas'
 
 const router = Router()
 const prisma = new PrismaClient()
 
 // ── Mappers JSON ─────────────────────────────────────────────────────────────
+
+const INCLUDE_CUENTAS = { include: { items: { include: { itemComanda: true } } }, orderBy: { numero: 'asc' as const } }
+const INCLUDE_COMPLETO = { items: true, cuentas: INCLUDE_CUENTAS }
+
+type CuentaDb = Record<string, unknown> & {
+  items?: { itemComandaId: string; cantidad: number; subtotal: number; itemComanda?: { nombre: string; precioUnitario: number } }[]
+}
+function mapCuenta(c: CuentaDb) {
+  return {
+    ...c,
+    items: (c.items ?? []).map((i) => ({
+      itemComandaId: i.itemComandaId,
+      cantidad: i.cantidad,
+      subtotal: i.subtotal,
+      nombre: i.itemComanda?.nombre ?? '',
+      precioUnitario: i.itemComanda?.precioUnitario ?? 0,
+    })),
+  }
+}
 
 function mapItem(i: Record<string, unknown>) {
   return {
@@ -20,7 +44,7 @@ function mapComanda(c: Record<string, unknown> & { items?: unknown[]; cuentas?: 
     ...c,
     mesasUnidas: c.mesasUnidas ? JSON.parse(c.mesasUnidas as string) : undefined,
     items: c.items?.map((i) => mapItem(i as Record<string, unknown>)),
-    cuentas: c.cuentas,
+    cuentas: (c.cuentas as CuentaDb[] | undefined)?.map(mapCuenta),
   }
 }
 
@@ -44,17 +68,28 @@ function emitirItemsAgregados(
     itemsBar: itemsBar.map((i) => ({ cantidad: i.cantidad, nombre: i.nombre })),
     origenSocketId,
   })
+  // Ticket automático en las impresoras de Cocina / Bar (los ítems vienen completos: nota, precio…)
+  imprimirComandaAuto(comandaMapeada as never, itemsNuevos as never, nuevo)
+  // Inventario: descuenta los insumos según la receta de cada producto
+  enSegundoPlano(descontarVenta(itemsNuevos as never, (comandaMapeada as unknown as { numeroMesa: number }).numeroMesa), 'descontar venta')
 }
 
 // ── GET /api/comandas ────────────────────────────────────────────────────────
 router.get('/', autenticar, async (req: Request, res: Response) => {
-  const { estado, mesaId } = req.query as { estado?: string; mesaId?: string }
+  const { estado, mesaId, cobradaDesde, cobradaHasta } = req.query as Record<string, string | undefined>
   const where: Record<string, unknown> = {}
   if (estado) where.estado = estado
   if (mesaId) where.mesaId = mesaId
+  // ?cobradaDesde=ISO&cobradaHasta=ISO → pedidos cobrados en ese rango
+  if (cobradaDesde || cobradaHasta) {
+    where.cobradaEn = {
+      ...(cobradaDesde ? { gte: new Date(cobradaDesde) } : {}),
+      ...(cobradaHasta ? { lte: new Date(cobradaHasta) } : {}),
+    }
+  }
   const comandas = await prisma.comanda.findMany({
     where,
-    include: { items: true, cuentas: { include: { items: true } } },
+    include: { items: true, cuentas: INCLUDE_CUENTAS },
     orderBy: { creadaEn: 'desc' },
   })
   res.json(comandas.map((c) => mapComanda(c as never)))
@@ -64,7 +99,7 @@ router.get('/', autenticar, async (req: Request, res: Response) => {
 router.get('/activas', autenticar, async (_req: Request, res: Response) => {
   const comandas = await prisma.comanda.findMany({
     where: { estado: { notIn: ['cerrada', 'cancelada'] } },
-    include: { items: true, cuentas: { include: { items: true } } },
+    include: { items: true, cuentas: INCLUDE_CUENTAS },
     orderBy: { creadaEn: 'asc' },
   })
   res.json(comandas.map((c) => mapComanda(c as never)))
@@ -75,15 +110,30 @@ router.get('/:id', autenticar, async (req: Request, res: Response): Promise<void
   const { id } = req.params as { id: string }
   const c = await prisma.comanda.findUnique({
     where: { id },
-    include: { items: true, cuentas: { include: { items: true } } },
+    include: { items: true, cuentas: INCLUDE_CUENTAS },
   })
   if (!c) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
   res.json(mapComanda(c as never))
 })
 
 // ── POST /api/comandas ───────────────────────────────────────────────────────
-router.post('/', autenticar, async (req: Request, res: Response) => {
-  const { mesaId, numeroMesa, mozo, items, tipoDescuento, notaGeneral, mesasUnidas } = req.body
+router.post('/', autenticar, async (req: Request, res: Response): Promise<void> => {
+  const { id, mesaId, numeroMesa, mozo, items, tipoDescuento, notaGeneral, mesasUnidas } = req.body
+  // Idempotente: la tablet genera el id; si un reenvío (WiFi cortado) llega dos veces, no se duplica
+  if (id) {
+    const existente = await prisma.comanda.findUnique({ where: { id }, include: { items: true } })
+    if (existente) { res.status(200).json(mapComanda(existente as never)); return }
+  }
+
+  // ── Validaciones del turno y del pedido ──
+  const quien = await resolverMozo(req.usuario, mozo)
+  if ('error' in quien) { res.status(quien.status).json({ error: quien.error }); return }
+  if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene ítems' }); return }
+  const mesa = await prisma.mesa.findUnique({ where: { id: String(mesaId ?? '') } })
+  if (!mesa) { res.status(404).json({ error: 'La mesa no existe' }); return }
+  const yaAbierta = await prisma.comanda.findFirst({ where: { mesaId: mesa.id, estado: { notIn: ['cerrada', 'cancelada'] } } })
+  if (yaAbierta) { res.status(409).json({ error: `La mesa ${mesa.numero} ya tiene un pedido abierto: agrega los ítems a ese pedido` }); return }
+
   const total: number = items.reduce(
     (acc: number, i: { cantidad: number; precioUnitario: number }) =>
       acc + i.cantidad * i.precioUnitario,
@@ -91,9 +141,10 @@ router.post('/', autenticar, async (req: Request, res: Response) => {
   )
   const comanda = await prisma.comanda.create({
     data: {
-      mesaId,
-      numeroMesa,
-      mozo,
+      ...(id ? { id } : {}),
+      mesaId: mesa.id,
+      numeroMesa: mesa.numero,
+      mozo: quien.nombre,
       total,
       estado: 'enviada_cocina',
       tipoDescuento: tipoDescuento ?? null,
@@ -102,10 +153,11 @@ router.post('/', autenticar, async (req: Request, res: Response) => {
       usuarioId: req.usuario?.id ?? null,
       items: {
         create: items.map((i: {
-          productoId: string; nombre: string; cantidad: number
+          id?: string; productoId: string; nombre: string; cantidad: number
           precioUnitario: number; nota?: string; area: string
           tipoPlato?: string; guarniciones?: string[]
         }) => ({
+          ...(i.id ? { id: i.id } : {}),
           productoId: i.productoId,
           nombre: i.nombre,
           cantidad: i.cantidad,
@@ -126,9 +178,19 @@ router.post('/', autenticar, async (req: Request, res: Response) => {
 })
 
 // ── PATCH /api/comandas/:id/estado ──────────────────────────────────────────
-router.patch('/:id/estado', autenticar, async (req: Request, res: Response) => {
+router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string }
   const { estado } = req.body
+  // Cerrar solo se hace cobrando (POST /:id/cobrar), para que nunca falte el registro del pago
+  if (estado === 'cerrada') { res.status(400).json({ error: 'Para cerrar la comanda hay que cobrarla en Caja' }); return }
+  if (estado === 'cancelada') {
+    const pendientes = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: SIN_PREPARAR } } })
+    const porId = new Map(pendientes.map((it) => [it.id, it]))
+    enSegundoPlano(devolverVenta(pendientes.map((it) => it.id), (itemId) => {
+      const it = porId.get(itemId)!
+      return `Pedido cancelado · ${it.cantidad}× ${it.nombre}`
+    }), 'devolver pedido cancelado')
+  }
   const comanda = await prisma.comanda.update({
     where: { id },
     data: { estado },
@@ -171,10 +233,14 @@ router.patch('/:id/nota', autenticar, async (req: Request, res: Response) => {
 router.patch('/:id/items/:itemId/estado', autenticar, async (req: Request, res: Response) => {
   const { id, itemId } = req.params as { id: string; itemId: string }
   const { estado, socketId } = req.body
+  const previo = await prisma.itemComanda.findUnique({ where: { id: itemId }, select: { estado: true } })
   const item = await prisma.itemComanda.update({
     where: { id: itemId },
     data: { estado },
   })
+  if (estado === 'cancelado' && previo && SIN_PREPARAR.includes(previo.estado)) {
+    enSegundoPlano(devolverVenta(item.id, `Anulado antes de preparar · ${item.cantidad}× ${item.nombre}`), 'devolver ítem')
+  }
 
   // Cuando el primer ítem de una comanda "enviada_cocina" empieza a prepararse,
   // la comanda entera pasa a "en_preparacion" — si no, la tarjeta se queda
@@ -244,7 +310,7 @@ router.post('/:id/items', autenticar, async (req: Request, res: Response): Promi
 router.post('/:id/items/batch', autenticar, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params as { id: string }
   type ItemDto = {
-    productoId: string; nombre: string; cantidad: number; precioUnitario: number
+    id?: string; productoId: string; nombre: string; cantidad: number; precioUnitario: number
     nota?: string; area: string; tipoPlato?: string; guarniciones?: string[]
   }
   const { items, socketId }: { items: ItemDto[]; socketId?: string } = req.body
@@ -254,10 +320,20 @@ router.post('/:id/items/batch', autenticar, async (req: Request, res: Response):
   })
   if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
 
+  // Idempotente: si es un reenvío, los ítems que ya existen (mismo id) no se vuelven a crear
+  const yaGuardados = new Set(comanda.items.map((i) => i.id))
+  const aCrear = items.filter((i) => !i.id || !yaGuardados.has(i.id))
+  if (aCrear.length === 0) {
+    const actual = await prisma.comanda.findUnique({ where: { id }, include: { items: true, cuentas: INCLUDE_CUENTAS } })
+    res.json(mapComanda(actual as never))
+    return
+  }
+
   await prisma.$transaction(
-    items.map((i) =>
+    aCrear.map((i) =>
       prisma.itemComanda.create({
         data: {
+          ...(i.id ? { id: i.id } : {}),
           comandaId: id,
           productoId: i.productoId,
           nombre: i.nombre,
@@ -272,11 +348,11 @@ router.post('/:id/items/batch', autenticar, async (req: Request, res: Response):
     )
   )
 
-  const addedTotal = items.reduce((acc, i) => acc + i.cantidad * i.precioUnitario, 0)
+  const addedTotal = aCrear.reduce((acc, i) => acc + i.cantidad * i.precioUnitario, 0)
   const updatedComanda = await prisma.comanda.update({
     where: { id },
     data: { total: comanda.total + addedTotal, estado: 'enviada_cocina' },
-    include: { items: true, cuentas: { include: { items: true } } },
+    include: { items: true, cuentas: INCLUDE_CUENTAS },
   })
 
   const mapeada = mapComanda(updatedComanda as never)
@@ -293,6 +369,9 @@ router.delete('/:id/items/:itemId', autenticar, async (req: Request, res: Respon
   const item = await prisma.itemComanda.findUnique({ where: { id: itemId } })
   if (item) {
     const actualizado = await prisma.itemComanda.update({ where: { id: item.id }, data: { estado: 'cancelado' } })
+    if (SIN_PREPARAR.includes(item.estado)) {
+      enSegundoPlano(devolverVenta(item.id, `Anulado antes de preparar · ${item.cantidad}× ${item.nombre}`), 'devolver ítem')
+    }
     await prisma.comanda.update({
       where: { id },
       data: { total: { decrement: item.cantidad * item.precioUnitario } },
@@ -302,60 +381,141 @@ router.delete('/:id/items/:itemId', autenticar, async (req: Request, res: Respon
   res.status(204).send()
 })
 
-// ── POST /api/comandas/:id/cuentas ──────────────────────────────────────────
-router.post('/:id/cuentas', autenticar, async (req: Request, res: Response): Promise<void> => {
-  const { id } = req.params as { id: string }
-  const { cuentas } = req.body as {
-    cuentas: {
-      numero: number
-      items: { itemComandaId: string; cantidad: number; subtotal: number }[]
-      subtotal: number
-    }[]
-  }
-  const comanda = await prisma.comanda.findUnique({ where: { id } })
-  if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+// ── Cobro ─────────────────────────────────────────────────────────────────────
 
-  const creadas = await prisma.$transaction(
-    cuentas.map((c) =>
-      prisma.cuentaParcial.create({
-        data: {
-          comandaId: id,
-          numero: c.numero,
-          subtotal: c.subtotal,
-          total: c.subtotal,
-          items: { create: c.items },
-        },
-        include: { items: true },
+async function nombreDe(usuarioId?: string) {
+  if (!usuarioId) return null
+  const u = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { nombre: true } })
+  return u?.nombre ?? null
+}
+
+// Cierra el pedido, libera la mesa a "en limpieza" y avisa a todas las pantallas
+async function cerrarComanda(id: string, datos: Record<string, unknown>) {
+  const comanda = await prisma.comanda.update({
+    where: { id },
+    data: { ...datos, estado: 'cerrada', cobradaEn: new Date() },
+    include: INCLUDE_COMPLETO,
+  })
+  await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'en_limpieza' } }).catch(() => {})
+  const mapeada = mapComanda(comanda as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  return mapeada
+}
+
+// ── POST /api/comandas/:id/cobrar ───────────────────────────────────────────
+// El servidor recalcula subtotal, descuento y total: no se confía en lo que manda el navegador.
+router.post('/:id/cobrar', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as { id: string }
+  const comanda = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
+  if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+  // Idempotente: si ya se cobró (doble clic, reintento), devuelve el cobro existente
+  if (comanda.estado === 'cerrada') { res.json(mapComanda(comanda as never)); return }
+  if (comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda está cancelada' }); return }
+  if (comanda.cuentas.length > 0) { res.status(409).json({ error: 'Esta cuenta está dividida: cóbrala desde "Dividir"' }); return }
+  if (!(await hayCajaAbierta())) { res.status(409).json({ error: 'La caja está cerrada: ábrela antes de cobrar' }); return }
+
+  const subtotal = subtotalDeItems(comanda.items)
+  const r = validarPago(req.body, subtotal)
+  if ('error' in r) { res.status(400).json({ error: r.error }); return }
+
+  const mapeada = await cerrarComanda(id, { ...r.datos, subtotal, cobradaPor: await nombreDe(req.usuario?.id) })
+  res.json(mapeada)
+})
+
+// ── POST /api/comandas/:id/cuentas ──────────────────────────────────────────
+// Divide la cuenta. Body: { cuentas: [{ numero, items: [{ itemComandaId, cantidad }] }] }
+// Si ya estaba dividida y aún no se pagó ninguna cuenta, reemplaza la división.
+router.post('/:id/cuentas', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
+  const { id } = req.params as { id: string }
+  const { cuentas } = req.body as { cuentas: { numero: number; items: { itemComandaId: string; cantidad: number }[] }[] }
+  const comanda = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
+  if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+  if (comanda.estado === 'cerrada' || comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda ya está cerrada' }); return }
+  if (comanda.cuentas.some((c) => c.estado === 'pagada')) { res.status(409).json({ error: 'Ya hay cuentas pagadas: no se puede volver a dividir' }); return }
+  if (!Array.isArray(cuentas) || cuentas.length === 0) { res.status(400).json({ error: 'No hay cuentas' }); return }
+
+  // Precios desde la base, y no se puede asignar más de lo que se pidió
+  const itemsComanda = new Map(comanda.items.filter((i) => i.estado !== 'cancelado' && i.estado !== 'devuelto').map((i) => [i.id, i]))
+  const asignado = new Map<string, number>()
+  for (const c of cuentas) {
+    for (const it of c.items) {
+      const original = itemsComanda.get(it.itemComandaId)
+      if (!original || !(it.cantidad > 0)) { res.status(400).json({ error: 'Ítem inválido en la división' }); return }
+      asignado.set(it.itemComandaId, (asignado.get(it.itemComandaId) ?? 0) + it.cantidad)
+      if (asignado.get(it.itemComandaId)! > original.cantidad) { res.status(400).json({ error: `Se asignó de más: ${original.nombre}` }); return }
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.cuentaParcial.deleteMany({ where: { comandaId: id } }),
+    ...cuentas.filter((c) => c.items.length > 0).map((c) => {
+      const items = c.items.map((it) => ({
+        itemComandaId: it.itemComandaId,
+        cantidad: it.cantidad,
+        subtotal: Math.round(it.cantidad * itemsComanda.get(it.itemComandaId)!.precioUnitario * 100) / 100,
+      }))
+      const subtotal = Math.round(items.reduce((a, it) => a + it.subtotal, 0) * 100) / 100
+      return prisma.cuentaParcial.create({
+        data: { comandaId: id, numero: c.numero, subtotal, total: subtotal, items: { create: items } },
       })
-    )
-  )
-  res.status(201).json(creadas)
+    }),
+  ])
+  const actualizada = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
+  const mapeada = mapComanda(actualizada as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  res.status(201).json(mapeada)
 })
 
 // ── PATCH /api/comandas/:id/cuentas/:cuentaId/pagar ─────────────────────────
-router.patch('/:id/cuentas/:cuentaId/pagar', autenticar, async (req: Request, res: Response) => {
+// Body: { metodoPago: efectivo|tarjeta|yape_plin, descuento (%), propina }
+// Al pagarse la última cuenta, el pedido se cierra con metodoPago "dividida" y los totales sumados.
+router.patch('/:id/cuentas/:cuentaId/pagar', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const { id, cuentaId } = req.params as { id: string; cuentaId: string }
-  const { metodoPago, descuento, propina } = req.body
   const cuenta = await prisma.cuentaParcial.findUnique({ where: { id: cuentaId } })
-  if (!cuenta) { res.status(404).json({ error: 'Cuenta no encontrada' }); return }
-  const total = cuenta.subtotal * (1 - (descuento ?? 0) / 100) + (propina ?? 0)
+  if (!cuenta || cuenta.comandaId !== id) { res.status(404).json({ error: 'Cuenta no encontrada' }); return }
 
-  const cuentaActualizada = await prisma.cuentaParcial.update({
-    where: { id: cuentaId },
-    data: { metodoPago, descuento: descuento ?? 0, propina: propina ?? 0, total, estado: 'pagada', pagadoEn: new Date() },
-  })
-
-  const cuentasPendientes = await prisma.cuentaParcial.count({
-    where: { comandaId: id, estado: 'pendiente' },
-  })
-  if (cuentasPendientes === 0) {
-    await prisma.comanda.update({ where: { id }, data: { estado: 'cerrada' } })
-    const comanda = await prisma.comanda.findUnique({ where: { id } })
-    if (comanda) {
-      await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'en_limpieza' } })
-    }
+  if (cuenta.estado !== 'pagada') {
+    if (!(await hayCajaAbierta())) { res.status(409).json({ error: 'La caja está cerrada: ábrela antes de cobrar' }); return }
+    const metodoPago = String(req.body.metodoPago ?? '')
+    if (!['efectivo', 'tarjeta', 'yape_plin'].includes(metodoPago)) { res.status(400).json({ error: 'Método de pago inválido' }); return }
+    const descuento = Number(req.body.descuento ?? 0)
+    const propina = Number(req.body.propina ?? 0)
+    if (!(descuento >= 0 && descuento <= 100) || !(propina >= 0)) { res.status(400).json({ error: 'Descuento o propina inválidos' }); return }
+    const { totalCobrado } = calcularTotales(cuenta.subtotal, descuento, propina)
+    await prisma.cuentaParcial.update({
+      where: { id: cuentaId },
+      data: { metodoPago, descuento, propina, total: totalCobrado, estado: 'pagada', pagadoEn: new Date() },
+    })
   }
-  res.json(cuentaActualizada)
+
+  const comanda = await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })
+  if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+  const pendientes = comanda.cuentas.filter((c) => c.estado !== 'pagada').length
+
+  if (pendientes === 0 && comanda.estado !== 'cerrada') {
+    const subtotal = comanda.cuentas.reduce((a, c) => a + c.subtotal, 0)
+    const descuentoMonto = comanda.cuentas.reduce((a, c) => a + c.subtotal * (c.descuento / 100), 0)
+    const propina = comanda.cuentas.reduce((a, c) => a + c.propina, 0)
+    const totalCobrado = comanda.cuentas.reduce((a, c) => a + c.total, 0)
+    const efectivo = comanda.cuentas.filter((c) => c.metodoPago === 'efectivo').reduce((a, c) => a + c.total, 0)
+    const r2 = (n: number) => Math.round(n * 100) / 100
+    const mapeada = await cerrarComanda(id, {
+      metodoPago: 'dividida',
+      subtotal: r2(subtotal),
+      descuentoPct: subtotal > 0 ? r2((descuentoMonto / subtotal) * 100) : 0,
+      descuentoMonto: r2(descuentoMonto),
+      propina: r2(propina),
+      totalCobrado: r2(totalCobrado),
+      montoEfectivo: r2(efectivo),
+      cobradaPor: await nombreDe(req.usuario?.id),
+    })
+    res.json(mapeada)
+    return
+  }
+  const mapeada = mapComanda(comanda as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  res.json(mapeada)
 })
+
 
 export default router

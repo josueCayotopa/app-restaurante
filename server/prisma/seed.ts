@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { asignarSeccionesCarta } from '../src/lib/seccionesCarta'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -34,19 +35,25 @@ async function main() {
     create: { nombre: 'Rosa Mendoza', email: 'rosa@cade.pe', password: await bcrypt.hash('caja123', 10), rol: 'cajero' },
   })
 
+  // ── Zonas ─────────────────────────────────────────────────────────────
+  const zonasData = ['Salón', 'Terraza', 'Barra', 'VIP']
+  for (const nombre of zonasData) {
+    await prisma.zona.upsert({ where: { nombre }, update: {}, create: { nombre } })
+  }
+
   // ── Mesas ─────────────────────────────────────────────────────────────
   const mesasData = [
-    { numero: 1, capacidad: 2, zona: 'salon' as const, posX: 80,  posY: 80  },
-    { numero: 2, capacidad: 4, zona: 'salon' as const, posX: 200, posY: 80  },
-    { numero: 3, capacidad: 4, zona: 'salon' as const, posX: 320, posY: 80  },
-    { numero: 4, capacidad: 6, zona: 'salon' as const, posX: 80,  posY: 200 },
-    { numero: 5, capacidad: 6, zona: 'salon' as const, posX: 220, posY: 200 },
-    { numero: 6, capacidad: 4, zona: 'terraza' as const, posX: 80,  posY: 80  },
-    { numero: 7, capacidad: 4, zona: 'terraza' as const, posX: 200, posY: 80  },
-    { numero: 8, capacidad: 2, zona: 'barra' as const, posX: 80,  posY: 80  },
-    { numero: 9, capacidad: 2, zona: 'barra' as const, posX: 160, posY: 80  },
-    { numero: 10, capacidad: 8, zona: 'vip' as const, posX: 80,  posY: 80  },
-    { numero: 11, capacidad: 4, zona: 'salon' as const, posX: 360, posY: 200 },
+    { numero: 1, capacidad: 2, zona: 'Salón' as const, posX: 80,  posY: 80  },
+    { numero: 2, capacidad: 4, zona: 'Salón' as const, posX: 200, posY: 80  },
+    { numero: 3, capacidad: 4, zona: 'Salón' as const, posX: 320, posY: 80  },
+    { numero: 4, capacidad: 6, zona: 'Salón' as const, posX: 80,  posY: 200 },
+    { numero: 5, capacidad: 6, zona: 'Salón' as const, posX: 220, posY: 200 },
+    { numero: 6, capacidad: 4, zona: 'Terraza' as const, posX: 80,  posY: 80  },
+    { numero: 7, capacidad: 4, zona: 'Terraza' as const, posX: 200, posY: 80  },
+    { numero: 8, capacidad: 2, zona: 'Barra' as const, posX: 80,  posY: 80  },
+    { numero: 9, capacidad: 2, zona: 'Barra' as const, posX: 160, posY: 80  },
+    { numero: 10, capacidad: 8, zona: 'VIP' as const, posX: 80,  posY: 80  },
+    { numero: 11, capacidad: 4, zona: 'Salón' as const, posX: 360, posY: 200 },
     { numero: 12, capacidad: 4, zona: 'salon' as const, posX: 80,  posY: 320 },
   ]
   for (const m of mesasData) {
@@ -178,16 +185,18 @@ async function main() {
       },
     })
   }
+  // Ubica cada producto en su sección de la carta pública
+  await asignarSeccionesCarta(prisma)
 
   // ── Insumos ───────────────────────────────────────────────────────────
   const insumos = [
-    { nombre: 'Limón',           categoria: 'Verduras',    unidad: 'kg',  stockActual: 15,  stockMinimo: 5,  stockMaximo: 30, precioUnitario: 3.5  },
-    { nombre: 'Ají Amarillo',    categoria: 'Verduras',    unidad: 'kg',  stockActual: 4,   stockMinimo: 2,  stockMaximo: 10, precioUnitario: 8    },
-    { nombre: 'Cebolla Roja',    categoria: 'Verduras',    unidad: 'kg',  stockActual: 8,   stockMinimo: 3,  stockMaximo: 20, precioUnitario: 2.5  },
-    { nombre: 'Lomo de Res',     categoria: 'Carnes',      unidad: 'kg',  stockActual: 5,   stockMinimo: 2,  stockMaximo: 15, precioUnitario: 35   },
-    { nombre: 'Pisco',           categoria: 'Licores',     unidad: 'lt',  stockActual: 12,  stockMinimo: 4,  stockMaximo: 25, precioUnitario: 45   },
-    { nombre: 'Arroz Extra',     categoria: 'Abarrotes',   unidad: 'kg',  stockActual: 50,  stockMinimo: 10, stockMaximo: 100, precioUnitario: 2.8 },
-    { nombre: 'Aceite Vegetal',  categoria: 'Abarrotes',   unidad: 'lt',  stockActual: 18,  stockMinimo: 5,  stockMaximo: 30, precioUnitario: 7    },
+    { nombre: 'Limón',           categoria: 'verduras',    unidad: 'kg',  stockActual: 15,  stockMinimo: 5,  stockMaximo: 30, precioUnitario: 3.5  },
+    { nombre: 'Ají Amarillo',    categoria: 'verduras',    unidad: 'kg',  stockActual: 4,   stockMinimo: 2,  stockMaximo: 10, precioUnitario: 8    },
+    { nombre: 'Cebolla Roja',    categoria: 'verduras',    unidad: 'kg',  stockActual: 8,   stockMinimo: 3,  stockMaximo: 20, precioUnitario: 2.5  },
+    { nombre: 'Lomo de Res',     categoria: 'carnes',      unidad: 'kg',  stockActual: 5,   stockMinimo: 2,  stockMaximo: 15, precioUnitario: 35   },
+    { nombre: 'Pisco',           categoria: 'bebidas',     unidad: 'l',   stockActual: 12,  stockMinimo: 4,  stockMaximo: 25, precioUnitario: 45   },
+    { nombre: 'Arroz Extra',     categoria: 'abarrotes',   unidad: 'kg',  stockActual: 50,  stockMinimo: 10, stockMaximo: 100, precioUnitario: 2.8 },
+    { nombre: 'Aceite Vegetal',  categoria: 'abarrotes',   unidad: 'l',   stockActual: 18,  stockMinimo: 5,  stockMaximo: 30, precioUnitario: 7    },
   ]
   for (const i of insumos) {
     const existe = await prisma.insumo.findFirst({ where: { nombre: i.nombre } })

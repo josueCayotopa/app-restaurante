@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import Header from '../../components/layout/Header'
+import ControlesKiosco from '../../components/kds/ControlesKiosco'
 import { useComandasStore } from '../../store/comandasStore'
-import { imprimirTicketComanda } from '../../lib/ticket'
+import { reimprimirComanda } from '../../lib/impresion'
+import { useToastStore } from '../../store/toastStore'
 import type { Comanda, ItemComanda, EstadoItem } from '../../types'
 import { Clock, ChefHat, CheckCircle, AlertTriangle, Play, Flame, RotateCcw, Printer } from 'lucide-react'
 
@@ -53,7 +55,7 @@ function ItemKDS({
         </div>
         <button
           onClick={() => onCambiarEstado('cancelado')}
-          className="shrink-0 px-2 py-1 rounded text-xs font-bold bg-white text-rojo-700 hover:bg-rojo-50 transition-colors"
+          className="shrink-0 px-4 min-h-11 rounded-lg text-sm font-bold bg-white text-rojo-700 hover:bg-rojo-50 transition-colors"
         >
           Aceptar ✓
         </button>
@@ -61,23 +63,28 @@ function ItemKDS({
     )
   }
 
+  // Fila con fondo SÓLIDO dorado cuando el ítem está activo (en preparación o
+  // listo) para que resalte de verdad; blanco/neutro mientras está pendiente
+  // o ya servido.
+  const activo = item.estado === 'listo' || item.estado === 'en_preparacion'
+
   return (
-    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
-      item.estado === 'listo' ? 'border-gold-200 bg-gold-50' :
-      item.estado === 'en_preparacion' ? 'border-gold-200 bg-gold-50' :
-      'border-gray-100 bg-white'
+    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${
+      activo ? 'bg-gold-500' : 'border border-gray-100 bg-white'
     }`}>
-      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.color}`}>
+      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${activo ? 'bg-black/10 text-gray-900' : `${cfg.bg} ${cfg.color}`}`}>
         ×{item.cantidad}
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <p className={`text-sm font-medium ${item.estado === 'servido' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+          <p className={`text-base font-semibold ${
+            item.estado === 'servido' ? 'line-through text-gray-400' : activo ? 'text-gray-900' : 'text-gray-800'
+          }`}>
             {item.nombre}
           </p>
           {item.tipoPlato && (
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-              item.tipoPlato === 'fuente' ? 'bg-steel-100 text-steel-700' : 'bg-gray-100 text-gray-600'
+              activo ? 'bg-black/15 text-gray-900' : item.tipoPlato === 'fuente' ? 'bg-steel-500 text-white' : 'bg-gray-500 text-white'
             }`}>
               {item.tipoPlato === 'plato' ? 'PLATO' : 'FUENTE'}
             </span>
@@ -86,20 +93,22 @@ function ItemKDS({
         {item.guarniciones && item.guarniciones.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-0.5">
             {item.guarniciones.map((g) => (
-              <span key={g} className="text-[10px] bg-gold-50 text-gold-700 border border-gold-200 px-1.5 py-0.5 rounded-full leading-none">
+              <span key={g} className={`text-[10px] px-1.5 py-0.5 rounded-full leading-none font-medium ${
+                activo ? 'bg-white text-gold-700' : 'bg-gold-500 text-gray-900'
+              }`}>
                 {g}
               </span>
             ))}
           </div>
         )}
         {item.nota && (
-          <p className="text-xs text-rojo-600 italic mt-0.5">⚠ {item.nota}</p>
+          <p className={`text-xs italic mt-0.5 font-semibold ${activo ? 'text-gray-900' : 'text-rojo-600'}`}>⚠ {item.nota}</p>
         )}
       </div>
       {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
         <button
           onClick={() => onCambiarEstado(siguiente)}
-          className={`shrink-0 px-2 py-1 rounded text-xs font-medium transition-colors ${
+          className={`shrink-0 px-4 min-h-11 min-w-20 rounded-lg text-sm font-bold transition-colors active:scale-95 ${
             siguiente === 'en_preparacion'
               ? 'bg-gold-600 text-white hover:bg-gold-700'
               : siguiente === 'listo'
@@ -166,8 +175,10 @@ function TarjetaComandaKDS({ comanda, todosLosItems, itemsColumna, columna }: {
             {comanda.numeroMesa}
           </div>
           <div>
+            
             <p className={`text-sm font-bold ${headerText}`}>Mesa {comanda.numeroMesa}</p>
             <p className={`text-xs ${headerMuted}`}>{comanda.mozo}</p>
+
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -177,11 +188,11 @@ function TarjetaComandaKDS({ comanda, todosLosItems, itemsColumna, columna }: {
             {tiempo.label}
           </div>
           <button
-            onClick={() => imprimirTicketComanda(comanda, itemsAMostrar.length > 0 ? itemsAMostrar : itemsColumna, 'cocina')}
+            onClick={() => reimprimirComanda(comanda.id, 'cocina', (itemsAMostrar.length > 0 ? itemsAMostrar : itemsColumna).map((i) => i.id)).catch((e) => useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se pudo imprimir', mensaje: e instanceof Error ? e.message : 'Error de impresión', duracion: 6000 }))}
             title="Reimprimir ticket"
-            className={`p-1 rounded transition-colors ${tiempo.urgente ? 'hover:bg-white/20 text-white' : todosListos ? 'hover:bg-black/10 text-gray-900' : 'hover:bg-gray-200 text-gray-500'}`}
+            className={`p-2.5 rounded-lg transition-colors ${tiempo.urgente ? 'hover:bg-white/20 text-white' : todosListos ? 'hover:bg-black/10 text-gray-900' : 'hover:bg-gray-200 text-gray-500'}`}
           >
-            <Printer size={13} />
+            <Printer size={18} />
           </button>
         </div>
       </div>
@@ -233,7 +244,7 @@ function TarjetaComandaKDS({ comanda, todosLosItems, itemsColumna, columna }: {
         {columna === 'listas' && todosListos && (
           <button
             onClick={() => actualizarEstadoComanda(comanda.id, 'lista')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-rojo-500 text-white rounded-lg text-xs font-semibold hover:bg-rojo-600 transition-colors"
+            className="flex items-center gap-1.5 px-4 min-h-11 bg-rojo-500 text-white rounded-lg text-sm font-bold active:scale-95 hover:bg-rojo-600 transition-colors"
           >
             <CheckCircle size={13} />
             Comanda lista
@@ -246,7 +257,7 @@ function TarjetaComandaKDS({ comanda, todosLosItems, itemsColumna, columna }: {
                 if (i.estado === 'pendiente') actualizarEstadoItem(comanda.id, i.id, 'en_preparacion')
               })
             }
-            className="flex items-center gap-1 px-3 py-1.5 bg-gold-600 text-white rounded-lg text-xs font-semibold hover:bg-gold-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 min-h-11 bg-gold-600 text-white rounded-lg text-sm font-bold active:scale-95 hover:bg-gold-700 transition-colors"
           >
             <Play size={13} />
             Iniciar {itemsAMostrar.length > 1 ? 'todo' : ''}
@@ -299,7 +310,7 @@ export default function CocinaPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header titulo="Cocina — KDS" subtitulo="Kitchen Display System" />
+      <Header titulo="Cocina — KDS" subtitulo="Kitchen Display System" acciones={<ControlesKiosco />} />
 
       <div className="flex-1 p-4 md:p-6 overflow-y-auto md:overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 md:h-full">

@@ -1,28 +1,21 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Header from '../../components/layout/Header'
 import { useCartaStore } from '../../store/cartaStore'
+import { useCategoriasStore, COLOR_CATEGORIA, type Categoria } from '../../store/categoriasStore'
+import ModalCategorias from '../../components/productos/ModalCategorias'
+import ModalReceta from '../../components/productos/ModalReceta'
+import { useRecetasStore } from '../../store/recetasStore'
+import { SECCION_CFG, type SeccionCarta } from '../../lib/carta'
 import { apiUpload, urlArchivo, ApiError } from '../../lib/api'
 import type { Producto, CategoriaProducto } from '../../types'
 import {
-  Search, Plus, ToggleLeft, ToggleRight, Clock, Edit2, Trash2, X, Check, ImagePlus, Loader2,
+  Search, Plus, Tags, ToggleLeft, ToggleRight, Clock, Edit2, Trash2, X, Check, ImagePlus, Loader2, ClipboardList,
 } from 'lucide-react'
 
-const CATEGORIAS: { valor: CategoriaProducto; label: string; emoji: string }[] = [
-  { valor: 'entradas', label: 'Entradas', emoji: '🥗' },
-  { valor: 'fondos', label: 'Fondos', emoji: '🍽️' },
-  { valor: 'bebidas', label: 'Bebidas', emoji: '🥤' },
-  { valor: 'cocteles', label: 'Bar / Cócteles', emoji: '🍺' },
-  { valor: 'postres', label: 'Postres', emoji: '🍮' },
-  { valor: 'extras', label: 'Extras', emoji: '🍟' },
-]
-
-const CATEGORIA_COLORS: Record<CategoriaProducto, string> = {
-  entradas: 'bg-rojo-100 text-rojo-700',
-  fondos:   'bg-gold-100 text-gold-700',
-  bebidas:  'bg-gray-100 text-gray-700',
-  cocteles: 'bg-gold-100 text-gold-700',
-  postres:  'bg-rojo-100 text-rojo-700',
-  extras: 'bg-gray-100 text-gray-600',
+// Clases de color (fondo sólido) de una categoría por id
+function colorDe(categorias: Categoria[], id: string) {
+  const c = categorias.find((x) => x.id === id)
+  return (COLOR_CATEGORIA[c?.color ?? 'gris'] ?? COLOR_CATEGORIA.gris).clases
 }
 
 function ModalProducto({
@@ -34,15 +27,17 @@ function ModalProducto({
   onGuardar: (datos: Omit<Producto, 'id'>) => void
   onCerrar: () => void
 }) {
+  const categorias = useCategoriasStore((s) => s.categorias)
   const [form, setForm] = useState({
     nombre: producto?.nombre ?? '',
     descripcion: producto?.descripcion ?? '',
     precio: producto?.precio ?? 0,
-    categoria: producto?.categoria ?? ('fondos' as CategoriaProducto),
+    categoria: producto?.categoria ?? categorias[0]?.id ?? '',
     disponible: producto?.disponible ?? true,
     tiempoPreparacion: producto?.tiempoPreparacion ?? 15,
     esAlcoholico: producto?.esAlcoholico ?? false,
     imagen: producto?.imagen ?? '',
+    seccionCarta: producto ? (producto.seccionCarta ?? '') : 'plato',
   })
   const [subiendoImagen, setSubiendoImagen] = useState(false)
   const [errorImagen, setErrorImagen] = useState('')
@@ -50,7 +45,7 @@ function ModalProducto({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onGuardar(form)
+    onGuardar({ ...form, seccionCarta: form.seccionCarta || null })
   }
 
   const handleSeleccionarImagen = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,16 +77,52 @@ function ModalProducto({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-            <input
-              required
-              value={form.nombre}
-              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500"
-              placeholder="Nombre del producto"
-            />
+          <div className="flex gap-3 items-end">
+            <div className="shrink-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Foto</label>
+              <input
+                ref={inputImagenRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={handleSeleccionarImagen}
+                className="hidden"
+              />
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => inputImagenRef.current?.click()}
+                  disabled={subiendoImagen}
+                  title={form.imagen ? 'Cambiar foto' : 'Subir foto'}
+                  className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-200 hover:border-gold-500 overflow-hidden flex items-center justify-center text-gray-400 hover:text-gold-600 transition-colors"
+                >
+                  {subiendoImagen ? <Loader2 size={20} className="animate-spin" />
+                    : form.imagen ? <img src={urlArchivo(form.imagen)} alt="" className="w-full h-full object-cover" />
+                    : <ImagePlus size={22} />}
+                </button>
+                {form.imagen && !subiendoImagen && (
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, imagen: '' }))}
+                    title="Quitar foto"
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center shadow"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+              <input
+                required
+                value={form.nombre}
+                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500"
+                placeholder="Nombre del producto"
+              />
+            </div>
           </div>
+          {errorImagen && <p className="text-xs text-red-500 -mt-2">{errorImagen}</p>}
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
@@ -102,32 +133,6 @@ function ModalProducto({
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500 resize-none"
               placeholder="Descripción opcional"
             />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Imagen</label>
-            <div className="flex items-center gap-3">
-              <div className="w-16 h-16 rounded-xl bg-gray-50 border border-gray-200 overflow-hidden flex items-center justify-center shrink-0">
-                {subiendoImagen ? (
-                  <Loader2 size={18} className="text-gray-400 animate-spin" />
-                ) : form.imagen ? (
-                  <img src={urlArchivo(form.imagen)} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <ImagePlus size={18} className="text-gray-300" />
-                )}
-              </div>
-              <div className="flex-1">
-                <input
-                  ref={inputImagenRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  onChange={handleSeleccionarImagen}
-                  disabled={subiendoImagen}
-                  className="w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-gold-50 file:text-gold-700 file:text-xs file:font-medium hover:file:bg-gold-100"
-                />
-                {errorImagen && <p className="text-xs text-red-500 mt-1">{errorImagen}</p>}
-              </div>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -162,22 +167,39 @@ function ModalProducto({
               onChange={(e) => setForm({ ...form, categoria: e.target.value as CategoriaProducto })}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500"
             >
-              {CATEGORIAS.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.emoji} {c.label}
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.emoji} {c.nombre}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Sección en la carta</label>
+            <select
+              value={form.seccionCarta}
+              onChange={(e) => setForm({ ...form, seccionCarta: e.target.value })}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500"
+            >
+              <option value="">— No sale en la carta —</option>
+              {(Object.keys(SECCION_CFG) as SeccionCarta[]).map((sec) => (
+                <option key={sec} value={sec}>{SECCION_CFG[sec].label}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Para tamaños usa el nombre con paréntesis, ej. <strong>Chicharrón (Personal)</strong> y <strong>Chicharrón (Fuente)</strong>: en la carta salen en una sola fila.
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setForm({ ...form, disponible: !form.disponible })}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
                 form.disponible
-                  ? 'border-gold-200 bg-gold-50 text-gold-700'
-                  : 'border-gray-200 bg-gray-50 text-gray-500'
+                  ? 'bg-green-500 text-white'
+                  : 'bg-gray-400 text-white'
               }`}
             >
               {form.disponible ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
@@ -212,63 +234,108 @@ function TarjetaProducto({
   producto,
   onEditar,
   onEliminar,
+  onReceta,
 }: {
   producto: Producto
   onEditar: () => void
   onEliminar: () => void
+  onReceta: () => void
 }) {
+  const receta = useRecetasStore((s) => s.recetas[producto.id])
+  const margen = receta && producto.precio > 0 ? Math.round(((producto.precio - receta.costo) / producto.precio) * 100) : null
   const toggleDisponibilidad = useCartaStore((s) => s.toggleDisponibilidad)
-  const cat = CATEGORIAS.find((c) => c.valor === producto.categoria)
+  const categorias = useCategoriasStore((s) => s.categorias)
+  const actualizarProducto   = useCartaStore((s) => s.actualizarProducto)
+  const cat = categorias.find((c) => c.id === producto.categoria)
+  const inputFoto = useRef<HTMLInputElement>(null)
+  const [subiendo, setSubiendo] = useState(false)
+
+  // Subir la foto real directo desde la tarjeta, sin abrir el formulario
+  const handleFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setSubiendo(true)
+    try {
+      const { url } = await apiUpload<{ url: string }>('/api/uploads/imagen', file)
+      await actualizarProducto(producto.id, { imagen: url })
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'Error subiendo la foto')
+    } finally {
+      setSubiendo(false)
+    }
+  }
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 p-4 flex gap-4 transition-opacity ${
+    <div className={`bg-white rounded-xl border border-gray-200 p-2.5 flex gap-3 items-center transition-opacity ${
       !producto.disponible ? 'opacity-60' : ''
     }`}>
-      {/* Imagen / icono categoría */}
-      <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl shrink-0 overflow-hidden">
-        {producto.imagen ? (
+      {/* Foto (clic para subir/cambiar) */}
+      <input ref={inputFoto} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFoto} className="hidden" />
+      <button
+        onClick={() => inputFoto.current?.click()}
+        disabled={subiendo}
+        title={producto.imagen ? 'Cambiar foto' : 'Subir foto'}
+        className="group relative w-14 h-14 bg-gray-50 rounded-lg flex items-center justify-center text-2xl shrink-0 overflow-hidden"
+      >
+        {subiendo ? (
+          <Loader2 size={18} className="text-gray-400 animate-spin" />
+        ) : producto.imagen ? (
           <img src={urlArchivo(producto.imagen)} alt={producto.nombre} className="w-full h-full object-cover" />
         ) : (
           cat?.emoji
         )}
-      </div>
+        {!subiendo && (
+          <span className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <ImagePlus size={16} />
+          </span>
+        )}
+      </button>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="font-semibold text-gray-800 text-sm leading-tight">{producto.nombre}</h3>
-          <span className="shrink-0 font-bold text-gold-600 text-sm">S/ {producto.precio.toFixed(2)}</span>
-        </div>
-
-        {producto.descripcion && (
-          <p className="text-xs text-gray-400 mb-2 line-clamp-2">{producto.descripcion}</p>
-        )}
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORIA_COLORS[producto.categoria]}`}>
-            {cat?.label}
+        <h3 className="font-semibold text-gray-800 text-sm leading-tight truncate" title={producto.nombre}>{producto.nombre}</h3>
+        <p className="font-bold text-gold-600 text-sm">S/ {producto.precio.toFixed(2)}</p>
+        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${colorDe(categorias, producto.categoria)}`}>
+            {cat?.nombre}
           </span>
-          {producto.tiempoPreparacion && (
-            <span className="flex items-center gap-1 text-xs text-gray-400">
-              <Clock size={11} />
-              {producto.tiempoPreparacion} min
+          {producto.tiempoPreparacion ? (
+            <span className="flex items-center gap-0.5 text-[11px] text-gray-400 shrink-0">
+              <Clock size={10} />
+              {producto.tiempoPreparacion}′
             </span>
+          ) : null}
+          {!producto.disponible && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-red-500 text-white shrink-0">Agotado</span>
           )}
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-            producto.disponible
-              ? 'bg-gold-50 text-gold-700'
-              : 'bg-red-50 text-red-500'
-          }`}>
-            {producto.disponible ? 'Disponible' : 'No disponible'}
-          </span>
         </div>
+        {/* Receta: costo, margen y cuántas porciones alcanzan con el stock */}
+        <button onClick={onReceta} className="mt-1 block text-left text-[11px] leading-tight hover:underline" title="Ver / editar receta">
+          {receta ? (
+            <span className="text-gray-500">
+              Costo S/ {receta.costo.toFixed(2)}{margen !== null && ` · margen ${margen}%`}
+              {receta.porciones !== null && (
+                <span className={receta.porciones === 0 ? 'text-red-500 font-semibold' : receta.porciones <= 5 ? 'text-rojo-600 font-semibold' : ''}>
+                  {' · '}{receta.porciones === 0 ? `sin stock (${receta.limitante})` : `alcanza ${receta.porciones}`}
+                </span>
+              )}
+            </span>
+          ) : (
+            <span className="text-gray-400">Sin receta · no descuenta inventario</span>
+          )}
+        </button>
       </div>
 
       {/* Acciones */}
-      <div className="flex flex-col gap-1.5 shrink-0">
+      <div className="flex flex-col shrink-0">
+        <button onClick={onReceta} title="Receta (insumos que descuenta)"
+          className={`p-1 rounded-lg transition-colors hover:bg-gold-50 ${receta ? 'text-gold-600' : 'text-gray-400'}`}>
+          <ClipboardList size={14} />
+        </button>
         <button
           onClick={() => toggleDisponibilidad(producto.id)}
           title={producto.disponible ? 'Desactivar' : 'Activar'}
-          className={`p-1.5 rounded-lg transition-colors ${
+          className={`p-1 rounded-lg transition-colors ${
             producto.disponible
               ? 'text-gold-600 hover:bg-gold-50'
               : 'text-gray-400 hover:bg-gray-100'
@@ -278,13 +345,15 @@ function TarjetaProducto({
         </button>
         <button
           onClick={onEditar}
-          className="p-1.5 rounded-lg text-gold-500 hover:bg-gold-50 transition-colors"
+          className="p-1 rounded-lg text-gold-500 hover:bg-gold-50 transition-colors"
+          title="Editar"
         >
           <Edit2 size={14} />
         </button>
         <button
           onClick={onEliminar}
-          className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors"
+          className="p-1 rounded-lg text-red-400 hover:bg-red-50 transition-colors"
+          title="Eliminar"
         >
           <Trash2 size={14} />
         </button>
@@ -295,9 +364,14 @@ function TarjetaProducto({
 
 export default function MenuPage() {
   const { productos, agregarProducto, actualizarProducto, eliminarProducto } = useCartaStore()
+  const categorias = useCategoriasStore((s) => s.categorias)
+  const [modalCategorias, setModalCategorias] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [categoriaActiva, setCategoriaActiva] = useState<CategoriaProducto | 'todas'>('todas')
   const [modal, setModal] = useState<{ abierto: boolean; producto?: Producto }>({ abierto: false })
+  const [recetaDe, setRecetaDe] = useState<Producto | null>(null)
+  const cargarRecetas = useRecetasStore((s) => s.cargar)
+  useEffect(() => { cargarRecetas().catch((e) => console.error('[recetas] Error cargando:', e)) }, [cargarRecetas])
 
   const productosFiltrados = productos.filter((p) => {
     const matchBusqueda =
@@ -328,23 +402,20 @@ export default function MenuPage() {
 
       <div className="flex-1 overflow-y-auto p-6 space-y-5">
         {/* KPIs por categoría */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {CATEGORIAS.map((cat) => {
-            const total = productos.filter((p) => p.categoria === cat.valor).length
-            const disp = productos.filter((p) => p.categoria === cat.valor && p.disponible).length
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2">
+          {categorias.map((cat) => {
+            const total = productos.filter((p) => p.categoria === cat.id).length
+            const disp = productos.filter((p) => p.categoria === cat.id && p.disponible).length
             return (
               <button
-                key={cat.valor}
-                onClick={() => setCategoriaActiva(cat.valor === categoriaActiva ? 'todas' : cat.valor)}
-                className={`rounded-xl p-3 border text-left transition-all ${
-                  categoriaActiva === cat.valor
-                    ? 'border-gold-400 bg-gold-50'
-                    : 'border-gray-200 bg-white hover:border-gold-200'
+                key={cat.id}
+                onClick={() => setCategoriaActiva(cat.id === categoriaActiva ? 'todas' : cat.id)}
+                className={`rounded-xl px-3 py-2 text-left transition-all ${colorDe(categorias, cat.id)} ${
+                  categoriaActiva === cat.id ? 'ring-2 ring-offset-2 ring-gold-500' : 'hover:brightness-105'
                 }`}
               >
-                <div className="text-xl mb-1">{cat.emoji}</div>
-                <p className="text-xs font-semibold text-gray-700">{cat.label}</p>
-                <p className="text-xs text-gray-400">{disp}/{total} activos</p>
+                <p className="text-sm font-semibold truncate"><span className="mr-1">{cat.emoji}</span>{cat.nombre}</p>
+                <p className="text-xs opacity-70">{disp}/{total} activos</p>
               </button>
             )
           })}
@@ -361,6 +432,13 @@ export default function MenuPage() {
               className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-gold-500 bg-white"
             />
           </div>
+          <button
+            onClick={() => setModalCategorias(true)}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-semibold hover:border-gold-500 hover:text-gold-600 transition-colors bg-white"
+          >
+            <Tags size={16} />
+            Categorías
+          </button>
           <button
             onClick={() => setModal({ abierto: true })}
             className="flex items-center gap-2 px-4 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 transition-colors"
@@ -382,19 +460,19 @@ export default function MenuPage() {
           >
             Todos ({productos.length})
           </button>
-          {CATEGORIAS.map((cat) => {
-            const count = productos.filter((p) => p.categoria === cat.valor).length
+          {categorias.map((cat) => {
+            const count = productos.filter((p) => p.categoria === cat.id).length
             return (
               <button
-                key={cat.valor}
-                onClick={() => setCategoriaActiva(cat.valor === categoriaActiva ? 'todas' : cat.valor)}
+                key={cat.id}
+                onClick={() => setCategoriaActiva(cat.id === categoriaActiva ? 'todas' : cat.id)}
                 className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  categoriaActiva === cat.valor
+                  categoriaActiva === cat.id
                     ? 'bg-gold-600 text-white border-gold-600'
                     : 'bg-white text-gray-600 border-gray-200 hover:border-gold-300'
                 }`}
               >
-                {cat.emoji} {cat.label} ({count})
+                {cat.emoji} {cat.nombre} ({count})
               </button>
             )
           })}
@@ -407,13 +485,18 @@ export default function MenuPage() {
             <p className="text-sm">No se encontraron productos</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-2">
             {productosFiltrados.map((p) => (
               <TarjetaProducto
                 key={p.id}
                 producto={p}
                 onEditar={() => setModal({ abierto: true, producto: p })}
-                onEliminar={() => eliminarProducto(p.id).catch((e) => console.error('[carta] Error eliminando producto:', e))}
+                onReceta={() => setRecetaDe(p)}
+                onEliminar={() => {
+                  if (confirm(`¿Eliminar "${p.nombre}"?`)) {
+                    eliminarProducto(p.id).catch((e) => alert(e instanceof ApiError ? e.message : 'No se pudo eliminar'))
+                  }
+                }}
               />
             ))}
           </div>
@@ -427,6 +510,9 @@ export default function MenuPage() {
           onCerrar={() => setModal({ abierto: false })}
         />
       )}
+
+      {modalCategorias && <ModalCategorias onCerrar={() => setModalCategorias(false)} />}
+      {recetaDe && <ModalReceta producto={recetaDe} onCerrar={() => setRecetaDe(null)} />}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { socket } from '../lib/socket'
 import { useComandasStore } from '../store/comandasStore'
+import { useMesasStore } from '../store/mesasStore'
 import { useToastStore } from '../store/toastStore'
 import { reproducirAlerta } from '../lib/sound'
 import type { Comanda, ItemComanda, TipoPlato, EstadoComanda } from '../types'
@@ -118,4 +119,38 @@ export function useSocketSync() {
       socket.off('comanda:item_devuelto', onItemDevuelto)
     }
   }, [aplicarComandaRemota, aplicarItemRemoto, agregarToast])
+}
+
+// Al volver la conexión (WiFi que se cayó, servidor reiniciado): primero se envía lo que
+// quedó en cola en este dispositivo y luego se recarga todo lo que pasó mientras tanto.
+// Sin esto, una pantalla de Cocina/Bar que perdió señal se queda sin los pedidos nuevos.
+export function useReconexion() {
+  useEffect(() => {
+    let primeraConexion = !socket.connected
+    const resincronizar = async () => {
+      await useComandasStore.getState().procesarCola()
+      await Promise.all([
+        useComandasStore.getState().cargarComandas(),
+        useMesasStore.getState().cargarMesas(),
+      ])
+    }
+    const onConnect = () => {
+      if (primeraConexion) { primeraConexion = false; return }   // la carga inicial ya la hace App
+      resincronizar()
+    }
+    const onOnline = () => { useComandasStore.getState().procesarCola() }
+
+    socket.on('connect', onConnect)
+    window.addEventListener('online', onOnline)
+    // Respaldo: si hay pendientes, reintentar cada 10 s aunque no llegue ningún evento
+    const intervalo = setInterval(() => {
+      if (useComandasStore.getState().cola.length > 0) useComandasStore.getState().procesarCola()
+    }, 10000)
+
+    return () => {
+      socket.off('connect', onConnect)
+      window.removeEventListener('online', onOnline)
+      clearInterval(intervalo)
+    }
+  }, [])
 }

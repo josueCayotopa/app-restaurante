@@ -1,111 +1,75 @@
 import { create } from 'zustand'
 import { apiFetch } from '../lib/api'
+import { socket } from '../lib/socket'
 
-const MOZOS_DISPONIBLES = ['Carlos', 'Ana', 'Luis', 'María', 'Pedro']
+export interface MozoTurno { id: string; nombre: string }
+
+interface TurnoDto {
+  id: string
+  estado: string
+  iniciadoPor: string
+  iniciadoEn: string
+  cerradoEn?: string | null
+  mozos: MozoTurno[]
+}
 
 interface TurnoState {
   activo: boolean
   turnoId: string | null
   iniciadoEn: string | null
   iniciadoPor: string | null
-  mozosEnTurno: string[]
-  mozosDisponibles: string[]
+  mozosEnTurno: MozoTurno[]
+  mozosDisponibles: MozoTurno[]   // usuarios reales con rol mozo y activos
 
   cargarTurno:  () => Promise<void>
-  iniciarTurno: (admin: string) => Promise<void>
+  iniciarTurno: (mozoIds?: string[]) => Promise<void>   // lanzan error con el motivo (solo admin)
   cerrarTurno:  () => Promise<void>
-  toggleMozo:   (nombre: string) => void
-  esMozoActivo: (nombre: string) => boolean
+  toggleMozo:   (usuarioId: string) => Promise<void>
+  estaEnTurno:  (usuarioId: string) => boolean
 }
 
-interface TurnoDto {
-  id: string
-  estado: string
-  iniciadoPor: string
-  mozos: string[]
-  iniciadoEn: string
-  cerradoEn?: string | null
-}
+const vacio = { activo: false, turnoId: null, iniciadoEn: null, iniciadoPor: null, mozosEnTurno: [] }
 
-export const useTurnoStore = create<TurnoState>((set, get) => ({
-  activo: false,
-  turnoId: null,
-  iniciadoEn: null,
-  iniciadoPor: null,
-  mozosEnTurno: [],
-  mozosDisponibles: MOZOS_DISPONIBLES,
+export const useTurnoStore = create<TurnoState>((set, get) => {
+  const aplicar = (t: TurnoDto | null) =>
+    set(t && t.estado === 'activo'
+      ? { activo: true, turnoId: t.id, iniciadoEn: t.iniciadoEn, iniciadoPor: t.iniciadoPor, mozosEnTurno: t.mozos }
+      : vacio)
 
-  cargarTurno: async () => {
-    try {
-      const turno = await apiFetch<TurnoDto | null>('/api/turnos/activo')
-      if (turno) {
-        set({
-          activo: true,
-          turnoId: turno.id,
-          iniciadoEn: turno.iniciadoEn,
-          iniciadoPor: turno.iniciadoPor,
-          mozosEnTurno: turno.mozos,
-        })
-      } else {
-        set({ activo: false, turnoId: null, iniciadoEn: null, iniciadoPor: null, mozosEnTurno: [] })
+  return {
+    ...vacio,
+    mozosDisponibles: [],
+
+    cargarTurno: async () => {
+      try {
+        const [turno, disponibles] = await Promise.all([
+          apiFetch<TurnoDto | null>('/api/turnos/activo'),
+          apiFetch<MozoTurno[]>('/api/turnos/mozos-disponibles'),
+        ])
+        aplicar(turno)
+        set({ mozosDisponibles: disponibles })
+      } catch (e) {
+        console.error('[turno] Error cargando:', e)
       }
-    } catch (e) {
-      console.error('[turno] Error cargando:', e)
-    }
-  },
+    },
 
-  iniciarTurno: async (admin) => {
-    try {
-      const turno = await apiFetch<TurnoDto>('/api/turnos/iniciar', {
-        method: 'POST',
-        body: JSON.stringify({ iniciadoPor: admin, mozos: [] }),
-      })
-      set({
-        activo: true,
-        turnoId: turno.id,
-        iniciadoEn: turno.iniciadoEn,
-        iniciadoPor: turno.iniciadoPor,
-        mozosEnTurno: turno.mozos,
-      })
-    } catch (e) {
-      console.error('[turno] Error iniciando:', e)
-      // Fallback local
-      set({ activo: true, turnoId: null, iniciadoEn: new Date().toISOString(), iniciadoPor: admin, mozosEnTurno: [] })
-    }
-  },
+    iniciarTurno: async (mozoIds = []) =>
+      aplicar(await apiFetch<TurnoDto>('/api/turnos/iniciar', { method: 'POST', body: JSON.stringify({ mozos: mozoIds }) })),
 
-  cerrarTurno: async () => {
-    const { turnoId } = get()
-    try {
-      if (turnoId) {
-        await apiFetch('/api/turnos/cerrar', { method: 'POST' })
-      }
-    } catch (e) {
-      console.error('[turno] Error cerrando:', e)
-    } finally {
-      set({ activo: false, turnoId: null, iniciadoEn: null, iniciadoPor: null, mozosEnTurno: [] })
-    }
-  },
+    cerrarTurno: async () => {
+      await apiFetch('/api/turnos/cerrar', { method: 'POST' })
+      aplicar(null)
+    },
 
-  toggleMozo: (nombre) => {
-    const { turnoId, mozosEnTurno } = get()
-    const prevMozos = mozosEnTurno
-    set((s) => ({
-      mozosEnTurno: s.mozosEnTurno.includes(nombre)
-        ? s.mozosEnTurno.filter((m) => m !== nombre)
-        : [...s.mozosEnTurno, nombre],
-    }))
-    if (!turnoId) return
-    apiFetch<TurnoDto>(`/api/turnos/${turnoId}/mozos`, {
-      method: 'PATCH',
-      body: JSON.stringify({ nombre }),
-    })
-      .then((turno) => set({ mozosEnTurno: turno.mozos }))
-      .catch((e) => {
-        console.error('[turno] Error toggle mozo:', e)
-        set({ mozosEnTurno: prevMozos })
-      })
-  },
+    toggleMozo: async (usuarioId) => {
+      const { turnoId } = get()
+      if (!turnoId) return
+      aplicar(await apiFetch<TurnoDto>(`/api/turnos/${turnoId}/mozos`, { method: 'PATCH', body: JSON.stringify({ usuarioId }) }))
+    },
 
-  esMozoActivo: (nombre) => get().mozosEnTurno.includes(nombre),
-}))
+    estaEnTurno: (usuarioId) => get().mozosEnTurno.some((m) => m.id === usuarioId),
+  }
+})
+
+// Si otro equipo abre/cierra el turno o cambia los mozos, todas las tablets se enteran al momento
+socket.on('turno:actualizado', () => { useTurnoStore.getState().cargarTurno() })

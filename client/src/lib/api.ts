@@ -1,8 +1,12 @@
-export const BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:3001'
+// Por defecto el servidor está en la misma máquina que sirve la app, puerto 3001.
+// Así una tablet que abre http://192.168.1.50:5173 habla con http://192.168.1.50:3001.
+export const BASE = import.meta.env.VITE_API_URL ?? `${location.protocol}//${location.hostname}:3001`
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  status: number
+  constructor(status: number, message: string) {
     super(message)
+    this.status = status
     this.name = 'ApiError'
   }
 }
@@ -10,6 +14,8 @@ export class ApiError extends Error {
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem('sgr_token')
   const res = await fetch(`${BASE}${path}`, {
+    // Con WiFi débil una petición puede quedar colgada: se corta a los 15 s y se trata como sin red
+    signal: AbortSignal.timeout(15000),
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -40,4 +46,10 @@ export async function apiUpload<T>(path: string, file: File, campo = 'imagen'): 
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`)
   return data as T
+}
+
+// true si falló la red (WiFi caído, servidor inalcanzable) y no la API en sí
+export function esErrorDeRed(e: unknown): boolean {
+  if (e instanceof ApiError) return false
+  return e instanceof TypeError || (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError'))
 }

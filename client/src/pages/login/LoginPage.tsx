@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
-import { UtensilsCrossed, Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
+import { Lock, Mail, AlertCircle, Loader2 } from 'lucide-react'
 
 const CREDENCIALES_KEY = 'sgr_credenciales'
 
@@ -74,17 +74,19 @@ export default function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs text-gray-400 mb-1.5 font-medium">
-                Correo electrónico
+                Usuario
               </label>
               <div className="relative">
                 <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                 <input
-                  type="email"
+                  type="text"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-gold-500 transition-colors"
-                  placeholder="admin@cade.pe"
-                  autoComplete="email"
+                  placeholder="ej. maria"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
                   required
                 />
               </div>

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import Header from '../../components/layout/Header'
+import ControlesKiosco from '../../components/kds/ControlesKiosco'
 import { useComandasStore } from '../../store/comandasStore'
-import { imprimirTicketComanda } from '../../lib/ticket'
+import { reimprimirComanda } from '../../lib/impresion'
+import { useToastStore } from '../../store/toastStore'
 import type { Comanda, ItemComanda, EstadoItem } from '../../types'
 import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer } from 'lucide-react'
 
@@ -51,7 +53,7 @@ function ItemBar({
         </div>
         <button
           onClick={() => onCambiarEstado('cancelado')}
-          className="shrink-0 px-2 py-1 rounded text-xs font-bold bg-white text-rojo-700 hover:bg-rojo-50 transition-colors"
+          className="shrink-0 px-4 min-h-11 rounded-lg text-sm font-bold bg-white text-rojo-700 hover:bg-rojo-50 transition-colors"
         >
           Aceptar ✓
         </button>
@@ -59,27 +61,32 @@ function ItemBar({
     )
   }
 
+  // Fila con fondo SÓLIDO dorado cuando el ítem está activo (en preparación o
+  // listo) para que resalte de verdad; blanco/neutro mientras está pendiente
+  // o ya servido.
+  const activo = item.estado === 'listo' || item.estado === 'en_preparacion'
+
   return (
-    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border ${
-      item.estado === 'listo'          ? 'border-gold-200 bg-gold-50' :
-      item.estado === 'en_preparacion' ? 'border-gold-200 bg-gold-50' :
-      'border-gray-100 bg-white'
+    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${
+      activo ? 'bg-gold-500' : 'border border-gray-100 bg-white'
     }`}>
-      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.color}`}>
+      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${activo ? 'bg-black/10 text-gray-900' : `${cfg.bg} ${cfg.color}`}`}>
         ×{item.cantidad}
       </span>
       <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${item.estado === 'servido' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+        <p className={`text-base font-semibold truncate ${
+          item.estado === 'servido' ? 'line-through text-gray-400' : activo ? 'text-gray-900' : 'text-gray-800'
+        }`}>
           {item.nombre}
         </p>
         {item.nota && (
-          <p className="text-xs text-rojo-600 italic">⚠ {item.nota}</p>
+          <p className={`text-xs italic font-semibold ${activo ? 'text-gray-900' : 'text-rojo-600'}`}>⚠ {item.nota}</p>
         )}
       </div>
       {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
         <button
           onClick={() => onCambiarEstado(siguiente)}
-          className={`shrink-0 px-2 py-1 rounded text-xs font-medium transition-colors ${
+          className={`shrink-0 px-4 min-h-11 min-w-20 rounded-lg text-sm font-bold transition-colors active:scale-95 ${
             siguiente === 'en_preparacion'
               ? 'bg-gold-600 text-white hover:bg-gold-700'
               : siguiente === 'listo'
@@ -149,11 +156,11 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
             {tiempo.label}
           </div>
           <button
-            onClick={() => imprimirTicketComanda(comanda, itemsColumna, 'bar')}
+            onClick={() => reimprimirComanda(comanda.id, 'bar', itemsColumna.map((i) => i.id)).catch((e) => useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se pudo imprimir', mensaje: e instanceof Error ? e.message : 'Error de impresión', duracion: 6000 }))}
             title="Reimprimir ticket"
-            className={`p-1 rounded transition-colors ${tiempo.urgente ? 'hover:bg-white/20 text-white' : todosListos ? 'hover:bg-black/10 text-gray-900' : 'hover:bg-gray-200 text-gray-500'}`}
+            className={`p-2.5 rounded-lg transition-colors ${tiempo.urgente ? 'hover:bg-white/20 text-white' : todosListos ? 'hover:bg-black/10 text-gray-900' : 'hover:bg-gray-200 text-gray-500'}`}
           >
-            <Printer size={13} />
+            <Printer size={18} />
           </button>
         </div>
       </div>
@@ -185,7 +192,7 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
         {columna === 'listas' && todosListos && (
           <button
             onClick={() => actualizarEstadoComanda(comanda.id, 'lista')}
-            className="flex items-center gap-1 px-3 py-1.5 bg-rojo-500 text-white rounded-lg text-xs font-semibold hover:bg-rojo-600 transition-colors"
+            className="flex items-center gap-1.5 px-4 min-h-11 bg-rojo-500 text-white rounded-lg text-sm font-bold active:scale-95 hover:bg-rojo-600 transition-colors"
           >
             <CheckCircle size={13} />
             Pedido listo
@@ -198,7 +205,7 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
                 if (i.estado === 'pendiente') actualizarEstadoItem(comanda.id, i.id, 'en_preparacion')
               })
             }
-            className="flex items-center gap-1 px-3 py-1.5 bg-gold-600 text-white rounded-lg text-xs font-semibold hover:bg-gold-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 min-h-11 bg-gold-600 text-white rounded-lg text-sm font-bold active:scale-95 hover:bg-gold-700 transition-colors"
           >
             <Play size={13} />
             Preparar {itemsColumna.length > 1 ? 'todo' : ''}
@@ -251,7 +258,7 @@ export default function BarPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header titulo="Bar — KDS" subtitulo="Bebidas & Cócteles" />
+      <Header titulo="Bar — KDS" subtitulo="Bebidas & Cócteles" acciones={<ControlesKiosco />} />
 
       <div className="flex-1 p-4 md:p-6 overflow-y-auto md:overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 md:h-full">

@@ -20,18 +20,13 @@ import { useComandasStore } from './store/comandasStore'
 import { useTurnoStore } from './store/turnoStore'
 import { useMesasStore } from './store/mesasStore'
 import { useCartaStore } from './store/cartaStore'
-import { useSocketSync } from './hooks/useSocketSync'
+import { useZonasStore } from './store/zonasStore'
+import { useCartaPublicaStore } from './store/cartaPublicaStore'
+import { useCategoriasStore } from './store/categoriasStore'
+import { useSocketSync, useReconexion } from './hooks/useSocketSync'
 import { tieneAcceso, rutaInicial } from './lib/permisos'
-
-function Proximamente({ nombre }: { nombre: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-gray-300 gap-3">
-      <div className="text-5xl">🚧</div>
-      <p className="text-lg font-semibold">{nombre}</p>
-      <p className="text-sm">Próximamente disponible</p>
-    </div>
-  )
-}
+// Escucha trabajos para impresoras USB asignadas a este equipo (desde cualquier pantalla)
+import './lib/impresion'
 
 function RutaProtegida() {
   const { usuario, token, verificarToken } = useAuthStore()
@@ -39,9 +34,13 @@ function RutaProtegida() {
   const cargarTurno    = useTurnoStore((s) => s.cargarTurno)
   const cargarMesas    = useMesasStore((s) => s.cargarMesas)
   const cargarProductos = useCartaStore((s) => s.cargarProductos)
+  const cargarZonas    = useZonasStore((s) => s.cargarZonas)
+  const cargarCarta    = useCartaPublicaStore((s) => s.cargarCarta)
+  const cargarCategorias = useCategoriasStore((s) => s.cargarCategorias)
   const [verificado, setVerificado] = useState(false)
 
   useSocketSync()
+  useReconexion()
 
   useEffect(() => {
     const init = async () => {
@@ -60,6 +59,9 @@ function RutaProtegida() {
       cargarTurno()
       cargarMesas()
       cargarProductos()
+      cargarZonas()
+      cargarCarta()
+      cargarCategorias()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [usuario])

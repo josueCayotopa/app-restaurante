@@ -2,6 +2,7 @@ import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import http from 'http'
+import fs from 'fs'
 import path from 'path'
 import { Server } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
@@ -21,6 +22,12 @@ import inventarioRoutes  from './routes/inventario'
 import proveedoresRoutes from './routes/proveedores'
 import reportesRoutes    from './routes/reportes'
 import uploadsRoutes     from './routes/uploads'
+import zonasRoutes       from './routes/zonas'
+import cartaRoutes       from './routes/carta'
+import categoriasRoutes  from './routes/categorias'
+import cajaRoutes        from './routes/caja'
+import impresionRoutes   from './routes/impresion'
+import recetasRoutes     from './routes/recetas'
 
 const app    = express()
 const server = http.createServer(app)
@@ -32,6 +39,8 @@ const origenPermitido = (origin: string | undefined, cb: (err: Error | null, all
   if (!origin) { cb(null, true); return }
   if (process.env.CLIENT_ORIGIN && origin === process.env.CLIENT_ORIGIN) { cb(null, true); return }
   if (/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) { cb(null, true); return }
+  // Tablets y pantallas dentro del local (red privada: 192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  if (/^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin)) { cb(null, true); return }
   cb(null, false)
 }
 
@@ -67,6 +76,31 @@ app.use('/api/inventario',  inventarioRoutes)
 app.use('/api/proveedores', proveedoresRoutes)
 app.use('/api/reportes',    reportesRoutes)
 app.use('/api/uploads',     uploadsRoutes)
+app.use('/api/zonas',       zonasRoutes)
+app.use('/api/carta',       cartaRoutes)
+app.use('/api/categorias',  categoriasRoutes)
+app.use('/api/caja',        cajaRoutes)
+app.use('/api/recetas',     recetasRoutes)
+app.use('/api',             impresionRoutes)   // /api/impresoras y /api/impresion/*
+
+// ── App web (PWA) compilada ───────────────────────────────────────────────
+// Si existe client/dist (npm run build en client), el mismo servidor la sirve:
+// las tablets del local solo abren http://IP-DE-ESTA-PC:3001
+const distCliente = path.join(__dirname, '..', '..', 'client', 'dist')
+if (fs.existsSync(path.join(distCliente, 'index.html'))) {
+  app.use(express.static(distCliente, {
+    // sw.js e index.html nunca en caché del navegador: así las tablets reciben las actualizaciones
+    setHeaders: (res, archivo) => {
+      if (archivo.endsWith('sw.js') || archivo.endsWith('index.html')) res.setHeader('Cache-Control', 'no-cache')
+    },
+  }))
+  // Rutas del front (/cocina, /bar, …) → index.html
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next()
+    res.setHeader('Cache-Control', 'no-cache')
+    res.sendFile(path.join(distCliente, 'index.html'))
+  })
+}
 
 // ── 404 para rutas desconocidas ───────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada' }))

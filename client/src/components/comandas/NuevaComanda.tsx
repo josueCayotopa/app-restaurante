@@ -1,46 +1,26 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useCartaStore } from '../../store/cartaStore'
+import { useCategoriasStore, areaDeCategoria } from '../../store/categoriasStore'
 import { urlArchivo } from '../../lib/api'
-import { imprimirTicketComanda } from '../../lib/ticket'
 import { useComandasStore } from '../../store/comandasStore'
 import { useMesasStore } from '../../store/mesasStore'
 import { useToastStore } from '../../store/toastStore'
 import { useTurnoStore } from '../../store/turnoStore'
+import { useAuthStore } from '../../store/authStore'
 import type {
   Producto, CategoriaProducto, ItemComanda,
-  AreaProduccion, TipoPlato, Comanda, TipoDescuento,
+  TipoPlato, Comanda, TipoDescuento,
 } from '../../types'
 import { MAX_GUARNICIONES } from '../../types'
+import { useCartaPublicaStore } from '../../store/cartaPublicaStore'
+import { useConexionStore } from '../../store/conexionStore'
+import { generarId } from '../../lib/id'
 import {
   X, Search, Plus, Minus, Trash2, Send, ChefHat, StickyNote,
   UtensilsCrossed, RotateCcw, Tag, FileText, WifiOff, AlertTriangle,
 } from 'lucide-react'
 
 // ── Constantes ───────────────────────────────────────────────────────────────
-
-const AREA_POR_CATEGORIA: Record<CategoriaProducto, AreaProduccion> = {
-  entradas: 'cocina',
-  fondos:   'cocina',
-  postres:  'cocina',
-  extras:   'cocina',
-  bebidas:  'bar',
-  cocteles: 'bar',
-}
-
-const CATEGORIAS: { valor: CategoriaProducto; label: string; emoji: string }[] = [
-  { valor: 'entradas', label: 'Entradas', emoji: '🥗' },
-  { valor: 'fondos',   label: 'Fondos',   emoji: '🍽️' },
-  { valor: 'bebidas',  label: 'Bebidas',  emoji: '🥤' },
-  { valor: 'cocteles', label: 'Bar',      emoji: '🍺' },
-  { valor: 'postres',  label: 'Postres',  emoji: '🍮' },
-  { valor: 'extras',   label: 'Extras',   emoji: '🍟' },
-]
-
-const DESCUENTOS: { valor: TipoDescuento; label: string; porcentaje: number; emoji: string }[] = [
-  { valor: 'pnp',        label: 'PNP',          porcentaje: 10, emoji: '👮' },
-  { valor: 'cumpleaño',  label: 'Cumpleañero',   porcentaje: 50, emoji: '🎂' },
-  { valor: 'clases2026', label: 'Clases 2026',   porcentaje: 10, emoji: '🎓' },
-]
 
 // ── Tipos locales ────────────────────────────────────────────────────────────
 
@@ -99,7 +79,7 @@ function ModalGuarnicion({
               onClick={() => setTipoPlato(tipo)}
               className={`py-2.5 rounded-xl border-2 font-semibold text-sm transition-all ${
                 tipoPlato === tipo
-                  ? 'border-steel-500 bg-steel-50 text-steel-700'
+                  ? 'border-steel-500 bg-steel-500 text-white'
                   : 'border-gray-200 text-gray-500 hover:border-gray-300'
               }`}
             >
@@ -114,7 +94,7 @@ function ModalGuarnicion({
         <div className="flex items-center justify-between mb-2">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Guarniciones</p>
           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            seleccionadas.length === maxGuarniciones ? 'bg-green-100 text-green-700' : 'bg-steel-50 text-steel-600'
+            seleccionadas.length === maxGuarniciones ? 'bg-green-500 text-white' : 'bg-steel-500 text-white'
           }`}>
             {seleccionadas.length}/{maxGuarniciones}
           </span>
@@ -129,12 +109,12 @@ function ModalGuarnicion({
                 onClick={() => toggleGuarnicion(g)}
                 disabled={dis}
                 className={`py-2 px-3 rounded-lg border text-xs text-left transition-all ${
-                  sel  ? 'border-gold-400 bg-gold-50 text-gray-800 font-semibold'
+                  sel  ? 'border-gold-500 bg-gold-500 text-gray-900 font-semibold'
                   : dis ? 'border-gray-100 text-gray-300 bg-gray-50 cursor-not-allowed'
                        : 'border-gray-200 text-gray-600 hover:border-gold-300 hover:bg-gold-50'
                 }`}
               >
-                {sel && <span className="text-gold-600 mr-1">✓</span>}{g}
+                {sel && <span className="mr-1">✓</span>}{g}
               </button>
             )
           })}
@@ -172,8 +152,8 @@ function ModalDevolucion({
       <div className="absolute inset-0 bg-black/60" onClick={onCancelar} />
       <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
         <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-rojo-50 flex items-center justify-center">
-            <RotateCcw size={26} className="text-rojo-600" />
+          <div className="w-14 h-14 rounded-full bg-rojo-500 flex items-center justify-center">
+            <RotateCcw size={26} className="text-white" />
           </div>
           <h3 className="font-bold text-gray-800">Confirmar devolución</h3>
           <p className="text-sm text-gray-500">
@@ -262,12 +242,15 @@ export default function NuevaComanda({
   mesaId, numeroMesa, mesasUnidas = [], onCerrar, comandaExistente,
 }: NuevaComandaProps) {
   const productos          = useCartaStore((s) => s.productos)
+  const categorias         = useCategoriasStore((s) => s.categorias)
   const agregarComanda     = useComandasStore((s) => s.agregarComanda)
   const agregarItemsA      = useComandasStore((s) => s.agregarItemsAComanda)
   const devolverItem       = useComandasStore((s) => s.devolverItem)
   const cambiarEstado      = useMesasStore((s) => s.cambiarEstado)
   const agregarToast       = useToastStore((s) => s.agregar)
   const turno              = useTurnoStore()
+  const usuario            = useAuthStore((s) => s.usuario)
+  const esMozo             = usuario?.rol === 'mozo'
 
   const modoAgregar = !!comandaExistente
 
@@ -276,19 +259,31 @@ export default function NuevaComanda({
   const [pedido, setPedido]               = useState<Map<string, ItemPedido>>(new Map())
   const [notaActiva, setNotaActiva]       = useState<string | null>(null)
   const [notaGeneral, setNotaGeneral]     = useState(comandaExistente?.notaGeneral ?? '')
+  // Un mozo siempre pide a su nombre; el admin elige un mozo del turno (o a sí mismo)
   const [mozo, setMozo]                  = useState(
-    modoAgregar ? (comandaExistente?.mozo ?? 'Carlos') : (turno.mozosEnTurno[0] ?? 'Carlos')
+    modoAgregar ? (comandaExistente?.mozo ?? '')
+      : esMozo ? (usuario?.nombre ?? '')
+      : (turno.mozosEnTurno[0]?.nombre ?? usuario?.nombre ?? '')
   )
+  const opcionesMozo = [...new Set([...turno.mozosEnTurno.map((m) => m.nombre), usuario?.nombre ?? ''])].filter(Boolean)
   const [tipoDescuento, setTipoDescuento] = useState<TipoDescuento | undefined>(
     comandaExistente?.tipoDescuento
   )
+  // Descuentos gestionados desde la Carta (solo activos, más el ya aplicado si se desactivó)
+  const promociones = useCartaPublicaStore((s) => s.promociones)
+  const descuentos = promociones
+    .filter((p) => p.activa || p.id === tipoDescuento)
+    .map((p) => ({ valor: p.id, label: p.nombre, porcentaje: p.porcentaje, emoji: p.emoji }))
   const [mobileTab, setMobileTab]         = useState<'carta' | 'pedido'>('carta')
   const [modalGuarnicion, setModalGuarnicion] = useState<Producto | null>(null)
   const [modalDevolucion, setModalDevolucion] = useState<ItemComanda | null>(null)
   const [enviando, setEnviando]           = useState(false)
 
-  const online = navigator.onLine
+  const online = useConexionStore((s) => s.conectado)
   const sinTurno = !turno.activo && !modoAgregar
+  // El servidor también lo valida; aquí se avisa antes de armar el pedido
+  const fueraDeTurno = !sinTurno && !modoAgregar && esMozo && !!usuario && !turno.estaEnTurno(usuario.id)
+  const bloqueado = sinTurno || fueraDeTurno
 
   const productosFiltrados = useMemo(() => {
     return productos.filter((p) => {
@@ -302,7 +297,7 @@ export default function NuevaComanda({
   const totalItems  = itemsPedido.reduce((acc, i) => acc + i.cantidad, 0)
   const totalPrecio = itemsPedido.reduce((acc, i) => acc + i.cantidad * i.producto.precio, 0)
 
-  const descuentoPct  = DESCUENTOS.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
+  const descuentoPct  = descuentos.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
   const totalConDcto  = totalPrecio * (1 - descuentoPct / 100)
 
   const cantidadProducto = (productoId: string) =>
@@ -324,9 +319,15 @@ export default function NuevaComanda({
   const confirmarGuarnicion = (tipoPlato: TipoPlato, guarniciones: string[]) => {
     if (!modalGuarnicion) return
     const key = `${modalGuarnicion.id}_${Date.now()}`
+    const firma = [...guarniciones].sort().join('|')
     setPedido((prev) => {
       const next = new Map(prev)
-      next.set(key, { key, producto: modalGuarnicion, cantidad: 1, nota: '', tipoPlato, guarniciones })
+      // Si ya existe el mismo plato con igual tipo y guarniciones, solo suma cantidad
+      const igual = [...next.values()].find((i) =>
+        i.producto.id === modalGuarnicion.id && i.tipoPlato === tipoPlato &&
+        [...(i.guarniciones ?? [])].sort().join('|') === firma)
+      if (igual) next.set(igual.key, { ...igual, cantidad: igual.cantidad + 1 })
+      else next.set(key, { key, producto: modalGuarnicion, cantidad: 1, nota: '', tipoPlato, guarniciones })
       return next
     })
     setModalGuarnicion(null)
@@ -388,20 +389,20 @@ export default function NuevaComanda({
 
   const enviar = async () => {
     if (pedido.size === 0 || enviando) return
-    if (!online) { agregarToast({ tipo: 'error', titulo: 'Sin conexión', mensaje: 'Verifica la conexión de red antes de enviar', duracion: 4000 }); return }
-    if (sinTurno) return
+    if (bloqueado) return
 
     setEnviando(true)
+    let resultado: 'enviado' | 'en_cola' = 'enviado'
     try {
-      const items: ItemComanda[] = itemsPedido.map((item, idx) => ({
-        id: `i${Date.now()}_${idx}`,
+      const items: ItemComanda[] = itemsPedido.map((item) => ({
+        id: generarId(),
         productoId: item.producto.id,
         nombre: item.producto.nombre,
         cantidad: item.cantidad,
         precioUnitario: item.producto.precio,
         nota: item.nota || undefined,
         estado: 'pendiente',
-        area: AREA_POR_CATEGORIA[item.producto.categoria],
+        area: areaDeCategoria(categorias, item.producto.categoria),
         tipoPlato: item.tipoPlato,
         guarniciones: item.guarniciones?.length ? item.guarniciones : undefined,
       }))
@@ -409,7 +410,7 @@ export default function NuevaComanda({
       const mesa = `Mesa ${numeroMesa}${mesasUnidas.length > 0 ? '+' + mesasUnidas.join('+') : ''}`
 
       if (modoAgregar && comandaExistente) {
-        await agregarItemsA(comandaExistente.id, items)
+        resultado = await agregarItemsA(comandaExistente.id, items)
         const itemsCocina = items.filter((i) => i.area === 'cocina')
         const itemsBar    = items.filter((i) => i.area === 'bar')
         if (itemsCocina.length > 0) {
@@ -427,11 +428,9 @@ export default function NuevaComanda({
         if (itemsBar.length > 0) {
           agregarToast({ tipo: 'bar', titulo: `🍺 Adición — ${mesa}`, mensaje: itemsBar.map((i) => `${i.cantidad}× ${i.nombre}`).join(' · '), duracion: 5000 })
         }
-        if (itemsCocina.length > 0) imprimirTicketComanda(comandaExistente, itemsCocina, 'cocina')
-        if (itemsBar.length > 0) imprimirTicketComanda(comandaExistente, itemsBar, 'bar')
       } else {
         const comanda: Comanda = {
-          id: `c${Date.now()}`,
+          id: generarId(),
           mesaId,
           numeroMesa,
           mesasUnidas: mesasUnidas.length > 0 ? mesasUnidas : undefined,
@@ -444,7 +443,7 @@ export default function NuevaComanda({
           tipoDescuento,
           notaGeneral: notaGeneral.trim() || undefined,
         }
-        await agregarComanda(comanda)
+        resultado = await agregarComanda(comanda)
         cambiarEstado(mesaId, 'ocupada')
 
         const itemsCocina = items.filter((i) => i.area === 'cocina')
@@ -464,10 +463,16 @@ export default function NuevaComanda({
         if (itemsBar.length > 0) {
           agregarToast({ tipo: 'bar', titulo: `🍺 Ticket enviado — ${mesa}`, mensaje: itemsBar.map((i) => `${i.cantidad}× ${i.nombre}`).join(' · '), duracion: 5000 })
         }
-        if (itemsCocina.length > 0) imprimirTicketComanda(comanda, itemsCocina, 'cocina')
-        if (itemsBar.length > 0) imprimirTicketComanda(comanda, itemsBar, 'bar')
       }
 
+      if (resultado === 'en_cola') {
+        agregarToast({
+          tipo: 'error',
+          titulo: 'Guardado sin conexión',
+          mensaje: 'El pedido quedó en esta tablet y se enviará solo cuando vuelva el WiFi.',
+          duracion: 7000,
+        })
+      }
       onCerrar()
     } catch (err) {
       agregarToast({
@@ -508,27 +513,29 @@ export default function NuevaComanda({
               {!modoAgregar && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs text-gray-400">Mozo:</span>
-                  <select
-                    value={mozo}
-                    onChange={(e) => setMozo(e.target.value)}
-                    className="text-xs text-gray-600 border-none bg-transparent focus:outline-none font-medium"
-                  >
-                    {(turno.mozosEnTurno.length > 0 ? turno.mozosEnTurno : turno.mozosDisponibles).map((m) => (
-                      <option key={m}>{m}</option>
-                    ))}
-                  </select>
+                  {esMozo ? (
+                    <span className="text-xs text-gray-600 font-medium">{mozo}</span>
+                  ) : (
+                    <select
+                      value={mozo}
+                      onChange={(e) => setMozo(e.target.value)}
+                      className="text-xs text-gray-600 border-none bg-transparent focus:outline-none font-medium"
+                    >
+                      {opcionesMozo.map((m) => <option key={m}>{m}</option>)}
+                    </select>
+                  )}
                 </div>
               )}
               {/* Indicador de descuento (el control vive en la columna de Pedido) */}
               {!modoAgregar && tipoDescuento && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-gold-100 border-gold-300 text-gold-700 font-medium">
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-gold-500 text-gray-900 font-semibold">
                   <Tag size={11} />
-                  {DESCUENTOS.find((d) => d.valor === tipoDescuento)?.label} · {descuentoPct}%
+                  {descuentos.find((d) => d.valor === tipoDescuento)?.label} · {descuentoPct}%
                 </span>
               )}
               {/* Indicador de nota general (el control vive en la columna de Pedido) */}
               {!modoAgregar && notaGeneral && (
-                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border bg-amber-50 border-amber-300 text-amber-700 font-medium">
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500 text-gray-900 font-semibold">
                   <FileText size={11} />
                   Nota ✓
                 </span>
@@ -545,15 +552,21 @@ export default function NuevaComanda({
 
         {/* Alertas */}
         {!online && (
-          <div className="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 shrink-0">
-            <WifiOff size={14} className="text-red-500 shrink-0" />
-            <p className="text-xs text-red-700 font-medium">Sin conexión — los pedidos no se enviarán</p>
+          <div className="bg-red-500 px-4 py-2 flex items-center gap-2 shrink-0">
+            <WifiOff size={14} className="text-white shrink-0" />
+            <p className="text-xs text-white font-semibold">Sin conexión — puedes enviar igual: el pedido se guarda y sale al volver el WiFi</p>
           </div>
         )}
         {sinTurno && (
-          <div className="bg-rojo-50 border-b border-rojo-200 px-4 py-2 flex items-center gap-2 shrink-0">
-            <AlertTriangle size={14} className="text-rojo-600 shrink-0" />
-            <p className="text-xs text-rojo-700 font-medium">No hay turno activo — el administrador debe iniciar el turno</p>
+          <div className="bg-rojo-500 px-4 py-2 flex items-center gap-2 shrink-0">
+            <AlertTriangle size={14} className="text-white shrink-0" />
+            <p className="text-xs text-white font-semibold">No hay turno activo — el administrador debe iniciar el turno</p>
+          </div>
+        )}
+        {fueraDeTurno && (
+          <div className="bg-rojo-500 px-4 py-2 flex items-center gap-2 shrink-0">
+            <AlertTriangle size={14} className="text-white shrink-0" />
+            <p className="text-xs text-white font-semibold">No estás en el turno de hoy — pide al administrador que te agregue</p>
           </div>
         )}
 
@@ -591,17 +604,17 @@ export default function NuevaComanda({
               </div>
             </div>
             <div className="flex gap-1 px-4 pb-2 overflow-x-auto">
-              {CATEGORIAS.map((cat) => (
+              {categorias.map((cat) => (
                 <button
-                  key={cat.valor}
-                  onClick={() => { setCategoriaActiva(cat.valor); setBusqueda('') }}
+                  key={cat.id}
+                  onClick={() => { setCategoriaActiva(cat.id); setBusqueda('') }}
                   className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    categoriaActiva === cat.valor
+                    categoriaActiva === cat.id
                       ? 'bg-steel-500 text-white'
                       : 'bg-white text-gray-600 border border-gray-200 hover:border-steel-300'
                   }`}
                 >
-                  <span>{cat.emoji}</span><span>{cat.label}</span>
+                  <span>{cat.emoji}</span><span>{cat.nombre}</span>
                 </button>
               ))}
             </div>
@@ -643,10 +656,10 @@ export default function NuevaComanda({
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-gray-700 truncate">{item.cantidad}× {item.nombre}</p>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            item.estado === 'pendiente' ? 'bg-gray-100 text-gray-500' :
-                            item.estado === 'en_preparacion' ? 'bg-gold-100 text-gold-700' :
-                            item.estado === 'listo' ? 'bg-gold-100 text-gold-700' :
-                            'bg-gray-50 text-gray-400'
+                            item.estado === 'pendiente' ? 'bg-gray-500 text-white' :
+                            item.estado === 'en_preparacion' ? 'bg-gold-500 text-gray-900' :
+                            item.estado === 'listo' ? 'bg-gold-600 text-white' :
+                            'bg-gray-300 text-gray-700'
                           }`}>
                             {item.estado === 'pendiente' ? 'Pendiente' : item.estado === 'en_preparacion' ? 'Preparando' : item.estado === 'listo' ? 'Listo' : 'Servido'}
                           </span>
@@ -676,30 +689,30 @@ export default function NuevaComanda({
 
             {/* Descuento — control prominente dentro de la columna de Pedido */}
             {!modoAgregar && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gold-50/40">
-                <p className="flex items-center gap-1.5 text-xs font-bold text-gold-700 uppercase tracking-wide mb-2">
+              <div className="px-4 py-3 border-b border-gray-100 bg-gold-500">
+                <p className="flex items-center gap-1.5 text-xs font-bold text-gray-900 uppercase tracking-wide mb-2">
                   <Tag size={12} />
                   Descuento
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     onClick={() => setTipoDescuento(undefined)}
-                    className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                    className={`px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                       !tipoDescuento
-                        ? 'bg-gray-700 border-gray-700 text-white'
-                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                        ? 'bg-gray-900 text-white'
+                        : 'bg-black/10 text-gray-900 hover:bg-black/20'
                     }`}
                   >
                     Ninguno
                   </button>
-                  {DESCUENTOS.map((d) => (
+                  {descuentos.map((d) => (
                     <button
                       key={d.valor}
                       onClick={() => setTipoDescuento(d.valor)}
-                      className={`px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                      className={`px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
                         tipoDescuento === d.valor
-                          ? 'bg-gold-600 text-white border-gold-600 shadow-sm'
-                          : 'bg-white border-gold-300 text-gold-700 hover:bg-gold-100'
+                          ? 'bg-white text-gold-700 shadow-sm'
+                          : 'bg-black/10 text-gray-900 hover:bg-black/20'
                       }`}
                     >
                       {d.emoji} {d.label} {d.porcentaje}%
@@ -711,8 +724,8 @@ export default function NuevaComanda({
 
             {/* Nota general — control prominente dentro de la columna de Pedido */}
             {!modoAgregar && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-amber-50/40">
-                <p className="flex items-center gap-1.5 text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">
+              <div className="px-4 py-3 border-b border-gray-100 bg-amber-500">
+                <p className="flex items-center gap-1.5 text-xs font-bold text-gray-900 uppercase tracking-wide mb-2">
                   <FileText size={12} />
                   Nota general
                 </p>
@@ -720,7 +733,7 @@ export default function NuevaComanda({
                   value={notaGeneral}
                   onChange={(e) => setNotaGeneral(e.target.value)}
                   placeholder="Ej: mesa para celíacos, cumpleaños..."
-                  className="w-full text-xs bg-white border border-amber-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+                  className="w-full text-xs bg-white text-gray-800 placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
                 />
               </div>
             )}
@@ -740,8 +753,8 @@ export default function NuevaComanda({
                           {cantidad}× {producto.nombre}
                         </p>
                         {tipoPlato && (
-                          <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 ${
-                            tipoPlato === 'fuente' ? 'bg-steel-100 text-steel-700' : 'bg-gray-100 text-gray-600'
+                          <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded mt-0.5 text-white ${
+                            tipoPlato === 'fuente' ? 'bg-steel-500' : 'bg-gray-500'
                           }`}>
                             {tipoPlato === 'plato' ? '🍽 Plato' : '🥘 Fuente'}
                           </span>
@@ -749,7 +762,7 @@ export default function NuevaComanda({
                         {guarniciones && guarniciones.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {guarniciones.map((g) => (
-                              <span key={g} className="text-[10px] bg-gold-50 text-gold-700 border border-gold-200 px-1.5 py-0.5 rounded-full leading-none">{g}</span>
+                              <span key={g} className="text-[10px] bg-gold-500 text-gray-900 px-1.5 py-0.5 rounded-full leading-none font-medium">{g}</span>
                             ))}
                           </div>
                         )}
@@ -768,10 +781,8 @@ export default function NuevaComanda({
                         </button>
                         <span className="text-xs font-bold text-steel-700 w-4 text-center">{cantidad}</span>
                         <button
-                          onClick={() => {
-                            if (producto.tieneGuarnicion) setModalGuarnicion(producto)
-                            else setPedido((p) => { const n = new Map(p); const a = n.get(key); if (a) n.set(key, { ...a, cantidad: a.cantidad + 1 }); return n })
-                          }}
+                          onClick={() => setPedido((p) => { const n = new Map(p); const a = n.get(key); if (a) n.set(key, { ...a, cantidad: a.cantidad + 1 }); return n })}
+                          title="Agregar otro igual"
                           className="w-5 h-5 rounded-full bg-steel-50 border border-steel-200 flex items-center justify-center hover:bg-steel-500 hover:text-white hover:border-steel-500 transition-all text-steel-600"
                         >
                           <Plus size={10} />
@@ -811,7 +822,7 @@ export default function NuevaComanda({
               {!modoAgregar && (
                 <div className="flex justify-between text-sm">
                   <span className={tipoDescuento ? 'text-gold-600 font-medium' : 'text-gray-400'}>
-                    {tipoDescuento ? `${DESCUENTOS.find((d) => d.valor === tipoDescuento)?.emoji} Descuento (${descuentoPct}%)` : 'Descuento'}
+                    {tipoDescuento ? `${descuentos.find((d) => d.valor === tipoDescuento)?.emoji} Descuento (${descuentoPct}%)` : 'Descuento'}
                   </span>
                   <span className={`font-semibold ${tipoDescuento ? 'text-gold-700' : 'text-gray-400'}`}>
                     {tipoDescuento ? `– S/ ${(totalPrecio * descuentoPct / 100).toFixed(2)}` : 'S/ 0.00'}
@@ -824,7 +835,7 @@ export default function NuevaComanda({
               </div>
               <button
                 onClick={enviar}
-                disabled={pedido.size === 0 || sinTurno || enviando}
+                disabled={pedido.size === 0 || bloqueado || enviando}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-steel-500 text-white text-sm font-bold hover:bg-steel-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Send size={15} className={enviando ? 'animate-pulse' : ''} />

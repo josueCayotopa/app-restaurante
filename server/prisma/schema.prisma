@@ -16,11 +16,57 @@ model Usuario {
   email     String   @unique
   password  String
   rol       String   @default("mozo")
+  cargo     String?  // puesto real (ej. "Encargada de salón"); el rol define los permisos
   activo    Boolean  @default(true)
+  zonas     String?  // JSON array de nombres de zona asignadas (ej. mozo -> ["Salón","Terraza"])
   creadoEn  DateTime @default(now())
 
   comandas  Comanda[]
   reservas  Reserva[]
+}
+
+// ─── Zonas del local ───────────────────────────────────────────────────────
+// Lista gestionable de zonas (Salón, Terraza, Barra, VIP...) usada por Mesa.zona
+// y asignable a los usuarios (qué zona(s) atiende cada mozo).
+
+model Zona {
+  id       String   @id @default(uuid())
+  nombre   String   @unique
+  creadaEn DateTime @default(now())
+}
+
+// ─── Carta pública ──────────────────────────────────────────────────────────
+// Promociones / descuentos gestionables desde la Carta. El id se guarda en
+// Comanda.tipoDescuento (los 3 originales usan ids fijos: pnp, cumpleaño, clases2026).
+// color: gold | rojo | steel | green
+
+model Promocion {
+  id         String   @id @default(uuid())
+  nombre     String
+  emoji      String   @default("🏷️")
+  porcentaje Float
+  condicion  String?
+  requisito  String?
+  color      String   @default("gold")
+  activa     Boolean  @default(true)
+  creadaEn   DateTime @default(now())
+}
+
+// OBSOLETO (2026-09-24): la carta ahora se arma desde Producto (seccionCarta). Se conserva la
+// tabla solo como respaldo de la migración; se puede eliminar más adelante.
+// Ítems de la carta impresa/pública (precios por tamaño como texto: p1/p2/p3).
+// seccion: plato | chaufa | caldo | guarnicion | guarnicion_extra | bebida_caliente | bebida_fria_jarra | bebida_fria_gaseosa
+
+model ItemCarta {
+  id       String   @id @default(uuid())
+  seccion  String
+  nombre   String
+  p1       String
+  p2       String   @default("")
+  p3       String   @default("")
+  imagen   String?
+  orden    Int      @default(0)
+  creadoEn DateTime @default(now())
 }
 
 // ─── Mesas ───────────────────────────────────────────────────────────────────
@@ -41,7 +87,20 @@ model Mesa {
 }
 
 // ─── Carta / Productos ───────────────────────────────────────────────────────
-// categoria: entradas | fondos | bebidas | cocteles | postres | extras
+// categoria: id de CategoriaProducto (las originales: entradas | fondos | bebidas | cocteles | postres | extras)
+
+// Categorías gestionables desde Productos. area decide a qué KDS va el ítem (cocina | bar).
+// color: gold | gold_osc | rojo | rojo_osc | steel | gris | verde
+
+model CategoriaProducto {
+  id       String   @id @default(uuid())
+  nombre   String
+  emoji    String   @default("🍽️")
+  color    String   @default("gold")
+  area     String   @default("cocina")
+  orden    Int      @default(0)
+  creadaEn DateTime @default(now())
+}
 
 model Producto {
   id                String   @id @default(uuid())
@@ -55,10 +114,15 @@ model Producto {
   esAlcoholico      Boolean  @default(false)
   tieneGuarnicion   Boolean  @default(false)
   guarnicionesDisponibles String?
+  // Carta pública: sección donde aparece (null = no sale en la carta) y orden dentro de ella.
+  // Los tamaños salen del nombre: "Chicharrón (Personal)" + "Chicharrón (Fuente)" = una fila con 2 columnas.
+  seccionCarta      String?
+  ordenCarta        Int      @default(0)
   creadoEn          DateTime @default(now())
   actualizadoEn     DateTime @updatedAt
 
   items             ItemComanda[]
+  receta            RecetaItem[]
 }
 
 // ─── Comandas ────────────────────────────────────────────────────────────────
@@ -74,6 +138,21 @@ model Comanda {
   tipoDescuento String?
   notaGeneral   String?
   mesasUnidas   String?
+
+  // Cobro (se llena al cerrar en Caja). total = suma de ítems; totalCobrado = lo que pagó el cliente
+  metodoPago     String?    // efectivo | tarjeta | yape_plin | mixto | dividida
+  subtotal       Float?     // suma de ítems al momento de cobrar
+  descuentoPct   Float     @default(0)
+  descuentoMonto Float     @default(0)
+  propina        Float     @default(0)
+  totalCobrado   Float?     // subtotal - descuentoMonto + propina
+  montoEfectivo  Float?     // parte pagada en efectivo (efectivo = todo; mixto = una parte)
+  metodoResto    String?    // mixto: cómo se pagó el resto (tarjeta | yape_plin)
+  montoRecibido  Float?     // efectivo entregado por el cliente
+  vuelto         Float?
+  cobradaEn      DateTime?
+  cobradaPor     String?    // nombre de quien cobró
+
   creadaEn      DateTime @default(now())
   actualizadaEn DateTime @updatedAt
 
@@ -109,6 +188,8 @@ model ItemComanda {
 // ─── Turno de trabajo ─────────────────────────────────────────────────────────
 // estado: activo | cerrado
 
+// Turno de salón: lo abre/cierra un admin. mozos = JSON con los ids de los usuarios mozo en turno.
+// Sin turno abierto no se pueden crear comandas nuevas.
 model Turno {
   id          String    @id @default(uuid())
   estado      String    @default("activo")
@@ -154,18 +235,18 @@ model ItemCuenta {
 
 model Reserva {
   id            String   @id @default(uuid())
-  mesaId        String
+  mesaId        String?  // opcional: la mesa se puede asignar al llegar
   usuarioId     String?
   clienteNombre String
   clienteTel    String?
-  fecha         DateTime
+  fecha         DateTime // fecha y hora de la reserva
   duracionMin   Int      @default(90)
   personas      Int
-  estado        String   @default("pendiente")
+  estado        String   @default("pendiente") // pendiente | confirmada | cancelada | completada
   notas         String?
   creadaEn      DateTime @default(now())
 
-  mesa    Mesa     @relation(fields: [mesaId], references: [id])
+  mesa    Mesa?    @relation(fields: [mesaId], references: [id])
   usuario Usuario? @relation(fields: [usuarioId], references: [id])
 }
 
@@ -185,17 +266,22 @@ model Insumo {
   actualizadoEn  DateTime @updatedAt
 
   movimientos MovimientoStock[]
+  recetas     RecetaItem[]
 }
 
 // tipo: entrada | salida | ajuste
 
 model MovimientoStock {
-  id          String   @id @default(uuid())
-  insumoId    String
-  tipo        String
-  cantidad    Float
-  motivo      String?
-  realizadoEn DateTime @default(now())
+  id              String   @id @default(uuid())
+  insumoId        String
+  tipo            String   // entrada | salida | merma | ajuste
+  cantidad        Float    // siempre positiva; en ajuste = diferencia absoluta
+  stockResultante Float?   // stock del insumo después del movimiento
+  motivo          String?
+  usuario         String?  // nombre de quien lo registró
+  compraId        String?  // si vino de recibir una orden de compra
+  itemComandaId   String?  // si vino de una venta (descuento automático por receta)
+  realizadoEn     DateTime @default(now())
 
   insumo Insumo @relation(fields: [insumoId], references: [id])
 }
@@ -203,38 +289,128 @@ model MovimientoStock {
 // ─── Proveedores ─────────────────────────────────────────────────────────────
 
 model Proveedor {
-  id        String   @id @default(uuid())
-  nombre    String
-  ruc       String?  @unique
-  contacto  String?
-  telefono  String?
-  email     String?
-  direccion String?
-  activo    Boolean  @default(true)
-  creadoEn  DateTime @default(now())
+  id           String   @id @default(uuid())
+  nombre       String
+  ruc          String?  @unique
+  contacto     String?
+  telefono     String?
+  email        String?
+  direccion    String?
+  categoria    String   @default("general") // carnes | pescados | verduras | bebidas | abarrotes | descartables | general
+  calificacion Int      @default(3)         // 1 a 5
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
 
   compras Compra[]
 }
 
+// Orden de compra. Flujo: borrador → enviada → aprobada → recibida (o cancelada).
+// Al recibirla, los ítems vinculados a un insumo suman stock en Inventario.
 model Compra {
-  id          String   @id @default(uuid())
-  proveedorId String
-  fecha       DateTime @default(now())
-  total       Float
-  estado      String   @default("pendiente")
-  notas       String?
+  id           String    @id @default(uuid())
+  numero       Int       @default(autoincrement())
+  proveedorId  String
+  fecha        DateTime  @default(now())
+  fechaEntrega DateTime?
+  total        Float
+  estado       String    @default("borrador")
+  notas        String?
+  creadoPor    String?
+  recibidaEn   DateTime?
 
   proveedor Proveedor  @relation(fields: [proveedorId], references: [id])
   items     ItemCompra[]
 }
 
 model ItemCompra {
-  id         String @id @default(uuid())
+  id         String  @id @default(uuid())
   compraId   String
+  insumoId   String? // vínculo opcional con Inventario
   nombre     String
+  unidad     String  @default("unidad")
   cantidad   Float
   precioUnit Float
   subtotal   Float
 
   compra Compra @relation(fields: [compraId], references: [id], onDelete: Cascade)
+}
+
+// ─── Caja (apertura, movimientos y cierre/arqueo) ───────────────────────────
+// Solo puede haber una sesión abierta a la vez; los cobros exigen caja abierta.
+// Efectivo esperado = fondo inicial + cobros en efectivo + ingresos − retiros.
+
+model CajaSesion {
+  id               String    @id @default(uuid())
+  estado           String    @default("abierta") // abierta | cerrada
+  abiertaEn        DateTime  @default(now())
+  abiertaPor       String
+  montoInicial     Float
+  cerradaEn        DateTime?
+  cerradaPor       String?
+  // Snapshot del arqueo al cerrar
+  efectivoCobrado  Float?
+  ingresos         Float?
+  retiros          Float?
+  efectivoEsperado Float?
+  efectivoContado  Float?
+  diferencia       Float?    // contado − esperado (negativo = falta dinero)
+  ventasNetas      Float?
+  propinas         Float?
+  tarjeta          Float?
+  yapePlin         Float?
+  pedidos          Int?
+  conteo           String?   // JSON { "200": 1, "100": 3, ... } si se contó por billetes
+  observaciones    String?
+
+  movimientos MovimientoCaja[]
+}
+
+model MovimientoCaja {
+  id        String   @id @default(uuid())
+  sesionId  String
+  tipo      String   // ingreso | retiro
+  monto     Float
+  concepto  String
+  usuario   String?
+  creadoEn  DateTime @default(now())
+
+  sesion CajaSesion @relation(fields: [sesionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Impresoras ──────────────────────────────────────────────────────────────
+// tipo "red": térmica con LAN; el servidor le envía ESC/POS por TCP (ip:puerto, normalmente 9100).
+// tipo "equipo": impresora conectada (USB) a una PC/tablet; ese equipo la marca como suya en
+//   Configuración y el servidor le manda los trabajos por socket para que imprima con el navegador.
+// area: cocina | bar | caja
+
+model Impresora {
+  id           String   @id @default(uuid())
+  nombre       String
+  area         String
+  tipo         String   @default("red")
+  ip           String?
+  puerto       Int      @default(9100)
+  ancho        Int      @default(80)     // mm de papel: 58 u 80
+  activa       Boolean  @default(true)
+  autoImprimir Boolean  @default(true)   // cocina/bar: imprime solo al llegar un pedido
+  copias       Int      @default(1)
+  abrirGaveta  Boolean  @default(false)  // caja: abre la gaveta al cobrar en efectivo
+  creadaEn     DateTime @default(now())
+}
+
+// ─── Recetas ─────────────────────────────────────────────────────────────────
+// Cuánto de cada insumo usa UNA unidad del producto (en la unidad del insumo).
+// Al enviar un pedido se descuenta del inventario; si el plato se cancela antes de
+// empezar a prepararse, se devuelve.
+
+model RecetaItem {
+  id         String   @id @default(uuid())
+  productoId String
+  insumoId   String
+  cantidad   Float
+
+  producto Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  insumo   Insumo   @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  @@unique([productoId, insumoId])
 }

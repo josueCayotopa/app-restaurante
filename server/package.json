@@ -11,7 +11,10 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "setup": "prisma db push && tsx prisma/seed.ts"
+    "setup": "prisma db push && tsx prisma/seed.ts",
+    "db:seed-carta": "tsx prisma/seed-carta.ts",
+    "db:unificar-carta": "tsx prisma/unificar-carta.ts",
+    "db:reiniciar-pedidos": "tsx prisma/reiniciar-pedidos.ts"
   },
   "keywords": [],
   "author": "",

@@ -3,10 +3,14 @@ import Header from '../../components/layout/Header'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
 import { useComandasStore } from '../../store/comandasStore'
 import { useTurnoStore } from '../../store/turnoStore'
-import type { Comanda, EstadoComanda, TipoDescuento } from '../../types'
+import { useAuthStore } from '../../store/authStore'
+import { useToastStore } from '../../store/toastStore'
+import { ApiError } from '../../lib/api'
+import { useCartaPublicaStore } from '../../store/cartaPublicaStore'
+import type { Comanda, EstadoComanda } from '../../types'
 import {
   Clock, ClipboardList, CheckCircle, ChefHat, XCircle, CreditCard,
-  Plus, PlayCircle, StopCircle, Users, Tag,
+  Plus, PlayCircle, StopCircle, Users, Tag, Loader2,
 } from 'lucide-react'
 
 // ── Config estados ───────────────────────────────────────────────────────────
@@ -20,12 +24,6 @@ const ESTADO_COMANDA: Record<EstadoComanda, { label: string; color: string; bg: 
   lista:          { label: 'Lista',      color: 'text-gold-700',  bg: 'bg-gold-100',  badgeBg: 'bg-gold-600',  badgeColor: 'text-white',    icon: CheckCircle   },
   cerrada:        { label: 'Cerrada',    color: 'text-gray-400',  bg: 'bg-gray-50',   badgeBg: 'bg-gray-300',  badgeColor: 'text-gray-700', icon: CreditCard    },
   cancelada:      { label: 'Cancelada',  color: 'text-red-600',   bg: 'bg-red-50',    badgeBg: 'bg-red-500',   badgeColor: 'text-white',    icon: XCircle       },
-}
-
-const DESCUENTO_LABEL: Record<TipoDescuento, { label: string; emoji: string }> = {
-  pnp:        { label: 'PNP 10%',       emoji: '👮' },
-  cumpleaño:  { label: 'Cumpleañero 50%', emoji: '🎂' },
-  clases2026: { label: 'Clases 10%',    emoji: '🎓' },
 }
 
 function tiempoTranscurrido(iso: string) {
@@ -48,6 +46,7 @@ function TarjetaComanda({
   const listos    = comanda.items.filter((i) => i.estado === 'listo').length
   const devueltos = comanda.items.filter((i) => i.estado === 'devuelto').length
   const cerrada   = comanda.estado === 'cerrada' || comanda.estado === 'cancelada'
+  const promo     = useCartaPublicaStore((s) => s.promociones.find((p) => p.id === comanda.tipoDescuento))
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow flex flex-col gap-3">
@@ -70,15 +69,15 @@ function TarjetaComanda({
 
       {/* Descuento */}
       {comanda.tipoDescuento && (
-        <div className="flex items-center gap-1.5 text-xs text-gold-700 bg-gold-50 border border-gold-200 rounded-lg px-2 py-1">
+        <div className="flex items-center gap-1.5 text-xs text-gray-900 bg-gold-500 rounded-lg px-2 py-1 font-medium">
           <Tag size={11} />
-          {DESCUENTO_LABEL[comanda.tipoDescuento].emoji} {DESCUENTO_LABEL[comanda.tipoDescuento].label}
+          {promo ? `${promo.emoji} ${promo.nombre} ${promo.porcentaje}%` : 'Descuento'}
         </div>
       )}
 
       {/* Nota general */}
       {comanda.notaGeneral && (
-        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 line-clamp-2 italic">
+        <p className="text-xs text-gray-900 bg-amber-500 rounded-lg px-2 py-1 line-clamp-2 italic font-medium">
           📋 {comanda.notaGeneral}
         </p>
       )}
@@ -132,6 +131,18 @@ function TarjetaComanda({
 
 function PanelTurno() {
   const turno = useTurnoStore()
+  const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
+  const agregarToast = useToastStore((s) => s.agregar)
+  const [seleccion, setSeleccion] = useState<string[]>([])   // mozos elegidos antes de abrir
+  const [ocupado, setOcupado] = useState<string | null>(null)
+
+  const ejecutar = async (clave: string, accion: () => Promise<void>) => {
+    setOcupado(clave)
+    try { await accion() }
+    catch (e) {
+      agregarToast({ tipo: 'error', titulo: 'Turno', mensaje: e instanceof ApiError ? e.message : 'No se pudo completar: revisa la conexión', duracion: 7000 })
+    } finally { setOcupado(null) }
+  }
 
   const tiempoTurno = () => {
     if (!turno.iniciadoEn) return ''
@@ -139,65 +150,84 @@ function PanelTurno() {
     return diff < 60 ? `${diff} min` : `${Math.floor(diff / 60)}h ${diff % 60}m`
   }
 
+  const chip = (activo: boolean) => `px-2.5 py-1.5 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 ${
+    activo ? 'bg-steel-500 text-white border-steel-500' : 'border-gray-200 text-gray-500 hover:border-steel-300 hover:text-steel-600'
+  }`
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
       <div className="flex items-center gap-2 mb-1">
         <div className={`w-2.5 h-2.5 rounded-full ${turno.activo ? 'bg-green-500' : 'bg-gray-300'}`} />
         <h3 className="text-sm font-bold text-gray-700">Turno de trabajo</h3>
         {turno.activo && (
-          <span className="ml-auto text-xs text-gray-400 flex items-center gap-1">
-            <Clock size={11} />
-            {tiempoTurno()}
-          </span>
+          <span className="ml-auto text-xs text-gray-400 flex items-center gap-1"><Clock size={11} /> {tiempoTurno()}</span>
         )}
       </div>
 
       {turno.activo ? (
         <>
           <p className="text-xs text-gray-500">
-            Iniciado por <strong>{turno.iniciadoPor}</strong>
+            Abierto por <strong>{turno.iniciadoPor}</strong> a las {new Date(turno.iniciadoEn!).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })}
           </p>
-          {/* Mozos en turno */}
           <div>
             <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
-              <Users size={12} />
-              Mozos activos
+              <Users size={12} /> Mozos en turno ({turno.mozosEnTurno.length})
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              {turno.mozosDisponibles.map((m) => (
-                <button
-                  key={m}
-                  onClick={() => turno.toggleMozo(m)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
-                    turno.mozosEnTurno.includes(m)
-                      ? 'bg-steel-500 text-white border-steel-500'
-                      : 'border-gray-200 text-gray-500 hover:border-steel-300 hover:text-steel-600'
-                  }`}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
+            {esAdmin ? (
+              <div className="flex flex-wrap gap-1.5">
+                {turno.mozosDisponibles.map((m) => (
+                  <button key={m.id} disabled={ocupado !== null}
+                    onClick={() => ejecutar(m.id, () => turno.toggleMozo(m.id))}
+                    className={chip(turno.estaEnTurno(m.id))}>
+                    {ocupado === m.id ? '…' : m.nombre}
+                  </button>
+                ))}
+                {turno.mozosDisponibles.length === 0 && (
+                  <p className="text-xs text-gray-400">No hay usuarios con rol Mozo. Créalos en Usuarios.</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600">
+                {turno.mozosEnTurno.length ? turno.mozosEnTurno.map((m) => m.nombre).join(', ') : 'Ningún mozo asignado todavía'}
+              </p>
+            )}
           </div>
-          <button
-            onClick={turno.cerrarTurno}
-            className="w-full flex items-center justify-center gap-2 py-2 bg-rojo-600 text-white rounded-lg text-xs font-bold hover:bg-rojo-700 transition-colors"
-          >
-            <StopCircle size={14} />
-            Cerrar turno
-          </button>
+          {esAdmin && (
+            <button disabled={ocupado !== null}
+              onClick={() => {
+                if (confirm('¿Cerrar el turno? Los mozos ya no podrán tomar pedidos nuevos.')) ejecutar('cerrar', turno.cerrarTurno)
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-rojo-600 text-white rounded-lg text-sm font-bold hover:bg-rojo-700 transition-colors disabled:opacity-50">
+              {ocupado === 'cerrar' ? <Loader2 size={14} className="animate-spin" /> : <StopCircle size={14} />} Cerrar turno
+            </button>
+          )}
         </>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-400">Sin turno activo. Los mozos no podrán crear comandas.</p>
-          <button
-            onClick={() => turno.iniciarTurno('Admin')}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-steel-500 text-white rounded-lg text-sm font-bold hover:bg-steel-600 transition-colors"
-          >
-            <PlayCircle size={15} />
-            Iniciar turno
+      ) : esAdmin ? (
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">Sin turno abierto: no se pueden tomar pedidos nuevos.</p>
+          {turno.mozosDisponibles.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-2">¿Quiénes trabajan hoy?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {turno.mozosDisponibles.map((m) => (
+                  <button key={m.id}
+                    onClick={() => setSeleccion((s) => (s.includes(m.id) ? s.filter((x) => x !== m.id) : [...s, m.id]))}
+                    className={chip(seleccion.includes(m.id))}>
+                    {m.nombre}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <button disabled={ocupado !== null}
+            onClick={() => ejecutar('iniciar', async () => { await turno.iniciarTurno(seleccion); setSeleccion([]) })}
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-steel-500 text-white rounded-lg text-sm font-bold hover:bg-steel-600 transition-colors disabled:opacity-50">
+            {ocupado === 'iniciar' ? <Loader2 size={15} className="animate-spin" /> : <PlayCircle size={15} />}
+            Iniciar turno{seleccion.length ? ` con ${seleccion.length} mozo${seleccion.length > 1 ? 's' : ''}` : ''}
           </button>
         </div>
+      ) : (
+        <p className="text-xs text-gray-400">Sin turno abierto. El administrador debe iniciarlo para tomar pedidos.</p>
       )}
     </div>
   )
@@ -228,12 +258,12 @@ export default function ComandasPage() {
                 const Icon = cfg.icon
                 const count = comandas.filter((c) => c.estado === estado).length
                 return (
-                  <div key={estado} className={`rounded-xl p-4 border ${cfg.bg}`}>
+                  <div key={estado} className={`rounded-xl p-4 ${cfg.badgeBg}`}>
                     <div className="flex items-center justify-between mb-1">
-                      <Icon size={18} className={cfg.color} />
-                      <span className={`text-2xl font-bold ${cfg.color}`}>{count}</span>
+                      <Icon size={18} className={cfg.badgeColor} />
+                      <span className={`text-2xl font-bold ${cfg.badgeColor}`}>{count}</span>
                     </div>
-                    <p className={`text-xs ${cfg.color} opacity-80`}>{cfg.label}</p>
+                    <p className={`text-xs ${cfg.badgeColor} opacity-80`}>{cfg.label}</p>
                   </div>
                 )
               })}
@@ -267,13 +297,16 @@ export default function ComandasPage() {
 
             {/* Info turno */}
             {turno.activo && turno.mozosEnTurno.length > 0 && (
-              <div className="mt-3 bg-steel-50 border border-steel-200 rounded-xl p-3">
-                <p className="text-xs font-bold text-steel-700 mb-1.5">En turno ahora</p>
+              <div className="mt-3 bg-steel-500 rounded-xl p-3">
+                <p className="text-xs font-bold text-white mb-1.5">En turno ahora</p>
                 <div className="space-y-1">
                   {turno.mozosEnTurno.map((m) => (
-                    <div key={m} className="flex items-center gap-2 text-xs text-steel-700">
-                      <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                      {m}
+                    <div key={m.id} className="flex items-center gap-2 text-xs text-white/90">
+                      <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      {m.nombre}
+                      <span className="ml-auto text-white/60">
+                        {activas.filter((c) => c.mozo === m.nombre).length} mesa(s)
+                      </span>
                     </div>
                   ))}
                 </div>

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
-import { autenticar } from '../middleware/auth'
+import { autenticar, requerirRol } from '../middleware/auth'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -26,32 +26,40 @@ router.get('/', autenticar, async (req: Request, res: Response) => {
 
 // GET /api/productos/:id
 router.get('/:id', autenticar, async (req: Request, res: Response): Promise<void> => {
-  const p = await prisma.producto.findUnique({ where: { id: req.params.id } })
+  const p = await prisma.producto.findUnique({ where: { id: String(req.params.id) } })
   if (!p) { res.status(404).json({ error: 'Producto no encontrado' }); return }
   res.json(mapProducto(p as never))
 })
 
 // POST /api/productos
-router.post('/', autenticar, async (req: Request, res: Response) => {
+router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
   const {
     nombre, descripcion, precio, categoria, disponible, imagen,
     tiempoPreparacion, esAlcoholico, tieneGuarnicion, guarnicionesDisponibles,
+    seccionCarta,
   } = req.body
+  // Nuevo producto en la carta → al final de su sección, salvo que venga un orden
+  let ordenCarta: number = req.body.ordenCarta ?? 0
+  if (seccionCarta && req.body.ordenCarta === undefined) {
+    const ultimo = await prisma.producto.aggregate({ where: { seccionCarta }, _max: { ordenCarta: true } })
+    ordenCarta = (ultimo._max.ordenCarta ?? 0) + 1
+  }
   const p = await prisma.producto.create({
     data: {
       nombre, descripcion, precio, categoria, disponible, imagen,
       tiempoPreparacion, esAlcoholico, tieneGuarnicion: tieneGuarnicion ?? false,
       guarnicionesDisponibles: guarnicionesDisponibles?.length ? JSON.stringify(guarnicionesDisponibles) : null,
+      seccionCarta: seccionCarta || null, ordenCarta,
     },
   })
   res.status(201).json(mapProducto(p as never))
 })
 
 // PATCH /api/productos/:id
-router.patch('/:id', autenticar, async (req: Request, res: Response) => {
+router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
   const { guarnicionesDisponibles, ...resto } = req.body
   const p = await prisma.producto.update({
-    where: { id: req.params.id },
+    where: { id: String(req.params.id) },
     data: {
       ...resto,
       ...(guarnicionesDisponibles !== undefined
@@ -63,18 +71,18 @@ router.patch('/:id', autenticar, async (req: Request, res: Response) => {
 })
 
 // PATCH /api/productos/:id/disponibilidad
-router.patch('/:id/disponibilidad', autenticar, async (req: Request, res: Response) => {
+router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cocinero', 'bartender'), async (req: Request, res: Response) => {
   const { disponible } = req.body
   const p = await prisma.producto.update({
-    where: { id: req.params.id },
+    where: { id: String(req.params.id) },
     data: { disponible },
   })
   res.json(p)
 })
 
 // DELETE /api/productos/:id
-router.delete('/:id', autenticar, async (req: Request, res: Response) => {
-  await prisma.producto.delete({ where: { id: req.params.id } })
+router.delete('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+  await prisma.producto.delete({ where: { id: String(req.params.id) } })
   res.status(204).send()
 })
 

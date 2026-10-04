@@ -1,10 +1,27 @@
 import { create } from 'zustand'
-import { apiFetch } from '../lib/api'
+import { apiFetch, esErrorDeRed, ApiError } from '../lib/api'
 import { socket } from '../lib/socket'
+import { generarId } from '../lib/id'
+import { useToastStore } from './toastStore'
 import type {
   Comanda, ItemComanda, EstadoItem, EstadoComanda,
-  CuentaParcial, MetodoPago, TipoDescuento, AreaProduccion,
+  MetodoPago, TipoDescuento, AreaProduccion,
 } from '../types'
+
+// Ítem tal como lo espera la API (con su id, para que un reenvío no lo duplique)
+function itemDto(i: ItemComanda) {
+  return {
+    id: i.id,
+    productoId: i.productoId,
+    nombre: i.nombre,
+    cantidad: i.cantidad,
+    precioUnitario: i.precioUnitario,
+    nota: i.nota,
+    area: i.area,
+    tipoPlato: i.tipoPlato,
+    guarniciones: i.guarniciones,
+  }
+}
 
 function recalcTotal(items: ItemComanda[]): number {
   return items
@@ -12,45 +29,164 @@ function recalcTotal(items: ItemComanda[]): number {
     .reduce((acc, i) => acc + i.cantidad * i.precioUnitario, 0)
 }
 
+// ── Cola de envío (WiFi intermitente) ────────────────────────────────────────
+// Si una operación falla por red, se guarda en el dispositivo y se reintenta sola al
+// volver la conexión. El servidor es idempotente (ids generados aquí), así que un
+// reenvío nunca duplica un pedido. "efecto" es el cambio local que se mantiene
+// visible mientras la operación espera (y se reaplica si se recarga la lista).
+type Efecto =
+  | { tipo: 'crear'; comanda: Comanda }
+  | { tipo: 'items'; comandaId: string; items: ItemComanda[] }
+  | { tipo: 'estadoItem'; comandaId: string; itemId: string; estado: EstadoItem }
+  | { tipo: 'estadoComanda'; comandaId: string; estado: EstadoComanda }
+
+export interface OpCola {
+  id: string
+  metodo: 'POST' | 'PATCH'
+  ruta: string
+  body: Record<string, unknown>
+  efecto: Efecto
+  creadaEn: string
+}
+
+export type ResultadoEnvio = 'enviado' | 'en_cola'
+
+const CLAVE_COLA = 'sgr_cola_envio'
+
+function leerCola(): OpCola[] {
+  try { return JSON.parse(localStorage.getItem(CLAVE_COLA) ?? '[]') } catch { return [] }
+}
+function guardarCola(cola: OpCola[]) {
+  try { localStorage.setItem(CLAVE_COLA, JSON.stringify(cola)) } catch { /* sin almacenamiento */ }
+}
+
+function aplicarEfecto(comandas: Comanda[], ef: Efecto): Comanda[] {
+  const ahora = new Date().toISOString()
+  switch (ef.tipo) {
+    case 'crear':
+      return comandas.some((c) => c.id === ef.comanda.id) ? comandas : [...comandas, ef.comanda]
+    case 'items':
+      return comandas.map((c) => {
+        if (c.id !== ef.comandaId) return c
+        const nuevos = ef.items.filter((i) => !c.items.some((x) => x.id === i.id))
+        if (nuevos.length === 0) return c
+        const items = [...c.items, ...nuevos]
+        return { ...c, items, total: recalcTotal(items), estado: 'enviada_cocina' as EstadoComanda, actualizadaEn: ahora }
+      })
+    case 'estadoItem':
+      return comandas.map((c) => {
+        if (c.id !== ef.comandaId) return c
+        const items = c.items.map((i) => (i.id === ef.itemId ? { ...i, estado: ef.estado } : i))
+        // Si el primer ítem arranca a prepararse, la comanda entera pasa de
+        // "enviada_cocina" a "en_preparacion" (si no, la tarjeta del KDS se
+        // queda pegada en "Nuevas" aunque los ítems ya estén cocinándose).
+        const estado = ef.estado === 'en_preparacion' && c.estado === 'enviada_cocina' ? 'en_preparacion' : c.estado
+        return { ...c, items, estado, actualizadaEn: ahora }
+      })
+    case 'estadoComanda':
+      return comandas.map((c) => (c.id === ef.comandaId ? { ...c, estado: ef.estado, actualizadaEn: ahora } : c))
+  }
+}
+
 interface ComandasState {
   comandas: Comanda[]
   comandaActiva: Comanda | null
   cargando: boolean
+  cola: OpCola[]
+  procesandoCola: boolean
+
+  enviarOEncolar:         (op: Omit<OpCola, 'id' | 'creadaEn'>) => Promise<ResultadoEnvio>
+  procesarCola:           () => Promise<void>
 
   cargarComandas:         () => Promise<void>
   setComandaActiva:       (comanda: Comanda | null) => void
-  agregarComanda:         (comanda: Comanda) => Promise<void>
+  agregarComanda:         (comanda: Comanda) => Promise<ResultadoEnvio>
   actualizarEstadoItem:   (comandaId: string, itemId: string, estado: EstadoItem) => void
   actualizarEstadoComanda:(comandaId: string, estado: EstadoComanda) => void
   agregarItem:            (comandaId: string, item: ItemComanda) => void
-  agregarItemsAComanda:   (comandaId: string, items: ItemComanda[]) => Promise<void>
+  agregarItemsAComanda:   (comandaId: string, items: ItemComanda[]) => Promise<ResultadoEnvio>
   eliminarItem:           (comandaId: string, itemId: string) => void
   devolverItem:           (comandaId: string, itemId: string) => AreaProduccion | null
   actualizarDescuento:    (comandaId: string, descuento: TipoDescuento | undefined) => void
   actualizarNotaGeneral:  (comandaId: string, nota: string) => void
   getComandaByMesa:       (mesaId: string) => Comanda | undefined
-  guardarCuentas:         (comandaId: string, cuentas: CuentaParcial[]) => void
+  cobrarComanda:          (comandaId: string, pago: DatosCobro) => Promise<Comanda>
+  dividirCuenta:          (comandaId: string, cuentas: { numero: number; items: { itemComandaId: string; cantidad: number }[] }[]) => Promise<Comanda>
+  pagarCuenta:            (comandaId: string, cuentaId: string, pago: { metodoPago: MetodoPago; descuento: number; propina: number }) => Promise<Comanda>
   aplicarComandaRemota:   (comanda: Comanda) => void
   aplicarItemRemoto:      (comandaId: string, item: ItemComanda, comandaEstado?: EstadoComanda) => void
-  pagarCuenta: (
-    comandaId: string,
-    cuentaId: string,
-    metodoPago: MetodoPago,
-    descuento: number,
-    propina: number
-  ) => boolean
+}
+
+// Lo que manda Caja al cobrar; el servidor recalcula montos y valida
+export interface DatosCobro {
+  metodoPago: MetodoPago
+  descuentoPct: number
+  propina: number
+  montoRecibido?: number      // efectivo: lo que entregó el cliente (vacío = exacto)
+  montoEfectivo?: number      // mixto: parte en efectivo
+  metodoResto?: 'tarjeta' | 'yape_plin'
 }
 
 export const useComandasStore = create<ComandasState>((set, get) => ({
   comandas: [],
   comandaActiva: null,
   cargando: false,
+  cola: leerCola(),
+  procesandoCola: false,
+
+  // Envía ya; si no hay red, deja la operación en cola (y su efecto visible localmente)
+  enviarOEncolar: async (op) => {
+    set((s) => ({ comandas: aplicarEfecto(s.comandas, op.efecto) }))
+    // Si ya hay operaciones esperando, esta va detrás para respetar el orden
+    if (get().cola.length === 0) {
+      try {
+        const resp = await apiFetch<unknown>(op.ruta, { method: op.metodo, body: JSON.stringify({ ...op.body, socketId: socket.id }) })
+        if (op.efecto.tipo === 'crear' || op.efecto.tipo === 'items') get().aplicarComandaRemota(resp as Comanda)
+        return 'enviado'
+      } catch (e) {
+        if (!esErrorDeRed(e)) throw e
+      }
+    }
+    const nueva: OpCola = { ...op, id: generarId(), creadaEn: new Date().toISOString() }
+    set((s) => ({ cola: [...s.cola, nueva] }))
+    guardarCola(get().cola)
+    return 'en_cola'
+  },
+
+  procesarCola: async () => {
+    if (get().procesandoCola || get().cola.length === 0) return
+    set({ procesandoCola: true })
+    try {
+      while (get().cola.length > 0) {
+        const op = get().cola[0]
+        try {
+          const resp = await apiFetch<unknown>(op.ruta, { method: op.metodo, body: JSON.stringify({ ...op.body, socketId: socket.id }) })
+          if (op.efecto.tipo === 'crear' || op.efecto.tipo === 'items') get().aplicarComandaRemota(resp as Comanda)
+        } catch (e) {
+          if (esErrorDeRed(e)) break   // sigue sin red: se reintenta después
+          // El servidor la rechazó (ej. la mesa ya no existe): se descarta para no trabar la cola
+          useToastStore.getState().agregar({
+            tipo: 'error',
+            titulo: 'No se pudo sincronizar',
+            mensaje: e instanceof ApiError ? e.message : 'Una operación pendiente fue rechazada',
+            duracion: 8000,
+          })
+        }
+        set((s) => ({ cola: s.cola.filter((x) => x.id !== op.id) }))
+        guardarCola(get().cola)
+      }
+    } finally {
+      set({ procesandoCola: false })
+    }
+  },
 
   cargarComandas: async () => {
     if (get().cargando) return
     set({ cargando: true })
     try {
-      const comandas = await apiFetch<Comanda[]>('/api/comandas/activas')
+      const delServidor = await apiFetch<Comanda[]>('/api/comandas/activas')
+      // Lo que aún espera en la cola sigue visible aunque el servidor no lo tenga todavía
+      const comandas = get().cola.reduce((acc, op) => aplicarEfecto(acc, op.efecto), delServidor)
       set({ comandas, cargando: false })
     } catch (e) {
       console.error('[comandas] Error cargando:', e)
@@ -61,59 +197,34 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
   setComandaActiva: (comanda) => set({ comandaActiva: comanda }),
 
   agregarComanda: async (comanda) => {
-    const dto = {
+    const body = {
+      id: comanda.id,
       mesaId: comanda.mesaId,
       numeroMesa: comanda.numeroMesa,
       mozo: comanda.mozo,
       tipoDescuento: comanda.tipoDescuento,
       notaGeneral: comanda.notaGeneral,
       mesasUnidas: comanda.mesasUnidas,
-      socketId: socket.id,
-      items: comanda.items.map((i) => ({
-        productoId: i.productoId,
-        nombre: i.nombre,
-        cantidad: i.cantidad,
-        precioUnitario: i.precioUnitario,
-        nota: i.nota,
-        area: i.area,
-        tipoPlato: i.tipoPlato,
-        guarniciones: i.guarniciones,
-      })),
+      items: comanda.items.map(itemDto),
     }
-    const created = await apiFetch<Comanda>('/api/comandas', {
-      method: 'POST',
-      body: JSON.stringify(dto),
-    })
-    set((s) => ({ comandas: [...s.comandas, created] }))
+    return get().enviarOEncolar({ metodo: 'POST', ruta: '/api/comandas', body, efecto: { tipo: 'crear', comanda } })
   },
 
   actualizarEstadoItem: (comandaId, itemId, estado) => {
-    set((s) => ({
-      comandas: s.comandas.map((c) => {
-        if (c.id !== comandaId) return c
-        const items = c.items.map((i) => (i.id === itemId ? { ...i, estado } : i))
-        // Si el primer ítem arranca a prepararse, la comanda entera pasa de
-        // "enviada_cocina" a "en_preparacion" (si no, la tarjeta del KDS se
-        // queda pegada en "Nuevas" aunque los ítems ya estén cocinándose).
-        const nuevoEstado = estado === 'en_preparacion' && c.estado === 'enviada_cocina' ? 'en_preparacion' : c.estado
-        return { ...c, items, estado: nuevoEstado, actualizadaEn: new Date().toISOString() }
-      }),
-    }))
-    apiFetch(`/api/comandas/${comandaId}/items/${itemId}/estado`, {
-      method: 'PATCH',
-      body: JSON.stringify({ estado, socketId: socket.id }),
+    get().enviarOEncolar({
+      metodo: 'PATCH',
+      ruta: `/api/comandas/${comandaId}/items/${itemId}/estado`,
+      body: { estado },
+      efecto: { tipo: 'estadoItem', comandaId, itemId, estado },
     }).catch((e) => console.error('[items] Error actualizando estado:', e))
   },
 
   actualizarEstadoComanda: (comandaId, estado) => {
-    set((s) => ({
-      comandas: s.comandas.map((c) =>
-        c.id === comandaId ? { ...c, estado, actualizadaEn: new Date().toISOString() } : c
-      ),
-    }))
-    apiFetch(`/api/comandas/${comandaId}/estado`, {
-      method: 'PATCH',
-      body: JSON.stringify({ estado }),
+    get().enviarOEncolar({
+      metodo: 'PATCH',
+      ruta: `/api/comandas/${comandaId}/estado`,
+      body: { estado },
+      efecto: { tipo: 'estadoComanda', comandaId, estado },
     }).catch((e) => console.error('[comandas] Error actualizando estado:', e))
   },
 
@@ -126,47 +237,13 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       }),
     })),
 
-  agregarItemsAComanda: async (comandaId, nuevosItems) => {
-    // Optimistic update
-    set((s) => ({
-      comandas: s.comandas.map((c) => {
-        if (c.id !== comandaId) return c
-        const items = [...c.items, ...nuevosItems]
-        return {
-          ...c,
-          items,
-          total: recalcTotal(items),
-          estado: 'enviada_cocina' as EstadoComanda,
-          actualizadaEn: new Date().toISOString(),
-        }
-      }),
-    }))
-    try {
-      const comanda = await apiFetch<Comanda>(`/api/comandas/${comandaId}/items/batch`, {
-        method: 'POST',
-        body: JSON.stringify({
-          socketId: socket.id,
-          items: nuevosItems.map((i) => ({
-            productoId: i.productoId,
-            nombre: i.nombre,
-            cantidad: i.cantidad,
-            precioUnitario: i.precioUnitario,
-            nota: i.nota,
-            area: i.area,
-            tipoPlato: i.tipoPlato,
-            guarniciones: i.guarniciones,
-          })),
-        }),
-      })
-      // Sync con respuesta del servidor
-      set((s) => ({
-        comandas: s.comandas.map((c) => (c.id === comandaId ? comanda : c)),
-      }))
-    } catch (e) {
-      console.error('[items] Error en batch:', e)
-      throw e
-    }
-  },
+  agregarItemsAComanda: async (comandaId, nuevosItems) =>
+    get().enviarOEncolar({
+      metodo: 'POST',
+      ruta: `/api/comandas/${comandaId}/items/batch`,
+      body: { items: nuevosItems.map(itemDto) },
+      efecto: { tipo: 'items', comandaId, items: nuevosItems },
+    }),
 
   eliminarItem: (comandaId, itemId) =>
     set((s) => ({
@@ -226,33 +303,23 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       (c) => c.mesaId === mesaId && c.estado !== 'cerrada' && c.estado !== 'cancelada'
     ),
 
-  guardarCuentas: (comandaId, cuentas) =>
-    set((s) => ({
-      comandas: s.comandas.map((c) =>
-        c.id === comandaId ? { ...c, cuentas, actualizadaEn: new Date().toISOString() } : c
-      ),
-    })),
+  // Cobro y cuenta dividida van directo al servidor (sin cola): Caja debe ver el error al momento
+  cobrarComanda: async (comandaId, pago) => {
+    const comanda = await apiFetch<Comanda>(`/api/comandas/${comandaId}/cobrar`, { method: 'POST', body: JSON.stringify(pago) })
+    get().aplicarComandaRemota(comanda)
+    return comanda
+  },
 
-  pagarCuenta: (comandaId, cuentaId, metodoPago, descuento, propina) => {
-    let todasPagadas = false
-    set((s) => ({
-      comandas: s.comandas.map((c) => {
-        if (c.id !== comandaId || !c.cuentas) return c
-        const cuentasActualizadas = c.cuentas.map((ct) => {
-          if (ct.id !== cuentaId) return ct
-          const total = ct.subtotal * (1 - descuento / 100) + propina
-          return { ...ct, metodoPago, descuento, propina, total, estado: 'pagada' as const, pagadoEn: new Date().toISOString() }
-        })
-        todasPagadas = cuentasActualizadas.every((ct) => ct.estado === 'pagada')
-        return {
-          ...c,
-          cuentas: cuentasActualizadas,
-          estado: todasPagadas ? ('cerrada' as const) : c.estado,
-          actualizadaEn: new Date().toISOString(),
-        }
-      }),
-    }))
-    return todasPagadas
+  dividirCuenta: async (comandaId, cuentas) => {
+    const comanda = await apiFetch<Comanda>(`/api/comandas/${comandaId}/cuentas`, { method: 'POST', body: JSON.stringify({ cuentas }) })
+    get().aplicarComandaRemota(comanda)
+    return comanda
+  },
+
+  pagarCuenta: async (comandaId, cuentaId, pago) => {
+    const comanda = await apiFetch<Comanda>(`/api/comandas/${comandaId}/cuentas/${cuentaId}/pagar`, { method: 'PATCH', body: JSON.stringify(pago) })
+    get().aplicarComandaRemota(comanda)
+    return comanda
   },
 
   aplicarComandaRemota: (comanda) =>

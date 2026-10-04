@@ -2,11 +2,12 @@ import { useState } from 'react'
 import Header from '../../components/layout/Header'
 import { useMesasStore } from '../../store/mesasStore'
 import { useComandasStore } from '../../store/comandasStore'
+import { useZonasStore } from '../../store/zonasStore'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
 import type { Mesa, EstadoMesa, Zona } from '../../types'
 import {
   Users, Plus, ClipboardList, X, CheckCircle, AlertCircle,
-  Brush, BookOpen, Link2, Link2Off, Trash2, Check, Settings2,
+  Brush, BookOpen, Link2, Link2Off, Trash2, Check, MapPin,
 } from 'lucide-react'
 
 // ─── Configuraciones ──────────────────────────────────────────────────────────
@@ -26,25 +27,102 @@ interface EstadoCfg {
   chip: string
 }
 
+// Colores de estado definidos por el cliente: verde=libre, rojo=ocupada,
+// amarillo=en_limpieza, gris=reservada, azul=esperando_pago, naranja=unida.
 const ESTADO_CONFIG: Record<EstadoMesa, EstadoCfg> = {
-  libre:          { label: 'Libre',       icon: CheckCircle, color: 'text-gray-600', bg: 'bg-gray-50',  border: 'border-gray-200', solidBg: 'bg-white',    solidText: 'text-gray-800', solidMuted: 'text-gray-400',    chip: 'bg-gray-100 text-gray-600' },
-  ocupada:        { label: 'Ocupada',     icon: Users,       color: 'text-gold-700', bg: 'bg-gold-100', border: 'border-gold-300', solidBg: 'bg-gold-500', solidText: 'text-gray-900', solidMuted: 'text-gray-900/70', chip: 'bg-black/10 text-gray-900' },
-  reservada:      { label: 'Reservada',   icon: BookOpen,    color: 'text-rojo-600', bg: 'bg-rojo-50',  border: 'border-rojo-200', solidBg: 'bg-rojo-500', solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
-  esperando_pago: { label: 'Esp. pago',   icon: AlertCircle, color: 'text-rojo-700', bg: 'bg-rojo-100', border: 'border-rojo-200', solidBg: 'bg-rojo-600', solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
-  en_limpieza:    { label: 'En limpieza', icon: Brush,       color: 'text-gray-500', bg: 'bg-gray-100', border: 'border-gray-200', solidBg: 'bg-gray-500', solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
-  unida:          { label: 'Unida',       icon: Link2,       color: 'text-gold-700', bg: 'bg-gold-50',  border: 'border-gold-300', solidBg: 'bg-gold-500', solidText: 'text-gray-900', solidMuted: 'text-gray-900/70', chip: 'bg-black/10 text-gray-900' },
+  libre:          { label: 'Libre',       icon: CheckCircle, color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300',  solidBg: 'bg-green-500',  solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
+  ocupada:        { label: 'Ocupada',     icon: Users,       color: 'text-rojo-700',   bg: 'bg-rojo-100',  border: 'border-rojo-300',   solidBg: 'bg-rojo-500',   solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
+  reservada:      { label: 'Reservada',   icon: BookOpen,    color: 'text-gray-600',   bg: 'bg-gray-100',  border: 'border-gray-300',   solidBg: 'bg-gray-500',   solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
+  esperando_pago: { label: 'Esp. pago',   icon: AlertCircle, color: 'text-steel-700',  bg: 'bg-steel-50',  border: 'border-steel-300',  solidBg: 'bg-steel-500',  solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
+  en_limpieza:    { label: 'En limpieza', icon: Brush,       color: 'text-gold-700',   bg: 'bg-gold-50',   border: 'border-gold-300',   solidBg: 'bg-gold-500',   solidText: 'text-gray-900', solidMuted: 'text-gray-900/70', chip: 'bg-black/10 text-gray-900' },
+  unida:          { label: 'Unida',       icon: Link2,       color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-300', solidBg: 'bg-orange-500', solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
 }
 
-const ZONA_LABELS: Record<Zona, string> = {
-  salon: 'Salón', terraza: 'Terraza', barra: 'Barra', vip: 'VIP',
+// ─── Modal Gestionar zonas ──────────────────────────────────────────────────
+
+function ModalZonas({ onCerrar }: { onCerrar: () => void }) {
+  const { zonas, agregarZona, eliminarZona } = useZonasStore()
+  const mesas = useMesasStore((s) => s.mesas)
+  const [nombre, setNombre] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleAgregar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!nombre.trim()) return
+    setGuardando(true)
+    setError('')
+    try {
+      await agregarZona(nombre.trim())
+      setNombre('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo crear la zona')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const handleEliminar = async (id: string, nombreZona: string) => {
+    const enUso = mesas.some((m) => m.zona === nombreZona)
+    if (enUso && !confirm(`Hay mesas asignadas a "${nombreZona}". ¿Eliminar de todas formas?`)) return
+    try {
+      await eliminarZona(id)
+    } catch (err) {
+      console.error('[zonas] Error eliminando:', err)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="font-bold text-gray-800 flex items-center gap-2"><MapPin size={16} className="text-gold-600" /> Zonas del local</h2>
+          <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"><X size={18} /></button>
+        </div>
+        <div className="p-6 space-y-4">
+          <form onSubmit={handleAgregar} className="flex gap-2">
+            <input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              placeholder="Ej: Segundo piso"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500"
+            />
+            <button type="submit" disabled={guardando || !nombre.trim()}
+              className="px-3 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              <Plus size={16} />
+            </button>
+          </form>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {zonas.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Sin zonas registradas</p>
+            ) : (
+              zonas.map((z) => (
+                <div key={z.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg">
+                  <span className="text-sm text-gray-700 font-medium">{z.nombre}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400">{mesas.filter((m) => m.zona === z.nombre).length} mesa(s)</span>
+                    <button onClick={() => handleEliminar(z.id, z.nombre)} className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
-const ZONAS: Zona[] = ['salon', 'terraza', 'barra', 'vip']
 
 // ─── Modal Nueva Mesa ─────────────────────────────────────────────────────────
 
 function ModalNuevaMesa({ onCerrar }: { onCerrar: () => void }) {
   const { crearMesa, mesas } = useMesasStore()
-  const [form, setForm] = useState({ numero: mesas.length + 1, capacidad: 4, zona: 'salon' as Zona })
+  const zonas = useZonasStore((s) => s.zonas)
+  const [form, setForm] = useState({ numero: mesas.length + 1, capacidad: 4, zona: zonas[0]?.nombre ?? '' })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,25 +158,29 @@ function ModalNuevaMesa({ onCerrar }: { onCerrar: () => void }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Zona</label>
-            <div className="grid grid-cols-2 gap-2">
-              {ZONAS.map((z) => (
-                <button key={z} type="button"
-                  onClick={() => setForm({ ...form, zona: z })}
-                  className={`py-2 rounded-lg border text-sm font-medium transition-all ${
-                    form.zona === z
-                      ? 'border-gold-500 bg-gold-50 text-gold-700'
-                      : 'border-gray-200 text-gray-600 hover:border-gold-300'
-                  }`}>
-                  {ZONA_LABELS[z]}
-                </button>
-              ))}
-            </div>
+            {zonas.length === 0 ? (
+              <p className="text-xs text-gray-400">No hay zonas creadas todavía — agrega una desde "Zonas" en la barra de herramientas.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {zonas.map((z) => (
+                  <button key={z.id} type="button"
+                    onClick={() => setForm({ ...form, zona: z.nombre })}
+                    className={`py-2 rounded-lg border text-sm font-medium transition-all ${
+                      form.zona === z.nombre
+                        ? 'border-gold-500 bg-gold-50 text-gold-700'
+                        : 'border-gray-200 text-gray-600 hover:border-gold-300'
+                    }`}>
+                    {z.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onCerrar}
               className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-            <button type="submit"
-              className="flex-1 py-2.5 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 flex items-center justify-center gap-2">
+            <button type="submit" disabled={!form.zona}
+              className="flex-1 py-2.5 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
               <Check size={15} /> Crear mesa
             </button>
           </div>
@@ -138,8 +220,6 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
     }
   }
 
-  const esLibre = mesa.estado === 'libre'
-
   return (
     <button onClick={handleClick}
       className={`relative border-2 rounded-xl p-4 text-left transition-all ${
@@ -149,8 +229,6 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
           ? 'border-gold-500 bg-gold-50 shadow-lg ring-2 ring-gold-300'
           : puedeFusionar
           ? 'border-dashed border-gold-300 bg-white hover:border-gold-500 hover:shadow-md cursor-pointer'
-          : esLibre
-          ? 'border-gray-200 bg-white hover:border-gold-300 hover:shadow-md cursor-pointer'
           : `border-transparent ${cfg.solidBg} hover:shadow-md hover:brightness-105 cursor-pointer`
       }`}
     >
@@ -169,30 +247,30 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
 
       <div className="flex items-start justify-between mb-3">
         <div>
-          <p className={`text-xs font-medium uppercase tracking-wide ${esLibre ? 'text-gray-400' : cfg.solidMuted}`}>
-            {ZONA_LABELS[mesa.zona]}
+          <p className={`text-xs font-medium uppercase tracking-wide ${cfg.solidMuted}`}>
+            {mesa.zona}
           </p>
-          <h3 className={`text-xl font-bold ${esLibre ? 'text-gray-800' : cfg.solidText}`}>
+          <h3 className={`text-xl font-bold ${cfg.solidText}`}>
             Mesa {mesa.numero}
             {esPrincipal && mesasSecundarias.length > 0 && (
-              <span className={`text-sm font-medium ml-1 ${esLibre ? 'text-gold-700' : cfg.solidText}`}>
+              <span className={`text-sm font-medium ml-1 ${cfg.solidText}`}>
                 +{mesasSecundarias.map((m) => m.numero).join('+')}
               </span>
             )}
           </h3>
         </div>
         <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-          isSeleccionada ? 'bg-gold-600' : esLibre ? 'bg-gray-50' : cfg.chip
+          isSeleccionada ? 'bg-gold-600' : cfg.chip
         }`}>
           {isSeleccionada
             ? <Check size={18} className="text-white" />
-            : <Icon size={18} className={esLibre ? 'text-gray-400' : cfg.solidText} />
+            : <Icon size={18} className={cfg.solidText} />
           }
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <div className={`flex items-center gap-1 text-sm ${esLibre ? 'text-gray-500' : cfg.solidMuted}`}>
+        <div className={`flex items-center gap-1 text-sm ${cfg.solidMuted}`}>
           <Users size={13} />
           <span>
             {esPrincipal
@@ -201,18 +279,16 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
             }
           </span>
         </div>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-          esLibre ? `border ${cfg.border} ${cfg.bg} ${cfg.color}` : cfg.chip
-        }`}>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.chip}`}>
           <Icon size={10} />
           {cfg.label}
         </span>
       </div>
 
       {comanda && !esSecundaria && (
-        <div className={`mt-2 pt-2 border-t flex items-center justify-between ${esLibre ? 'border-gray-100' : 'border-black/10'}`}>
-          <span className={`text-xs ${esLibre ? 'text-gray-500' : cfg.solidMuted}`}>{comanda.items.length} ítem(s)</span>
-          <span className={`text-xs font-semibold ${esLibre ? 'text-gold-700' : cfg.solidText}`}>S/ {comanda.total.toFixed(2)}</span>
+        <div className="mt-2 pt-2 border-t border-black/10 flex items-center justify-between">
+          <span className={`text-xs ${cfg.solidMuted}`}>{comanda.items.length} ítem(s)</span>
+          <span className={`text-xs font-semibold ${cfg.solidText}`}>S/ {comanda.total.toFixed(2)}</span>
         </div>
       )}
     </button>
@@ -239,7 +315,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
     <div className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col">
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">{ZONA_LABELS[mesa.zona]}</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">{mesa.zona}</p>
           <h2 className="text-lg font-bold text-gray-800">
             Mesa {mesa.numero}
             {esPrincipal && <span className="text-gold-600 text-sm ml-1">+{mesasSecundarias.map((m) => m.numero).join('+')}</span>}
@@ -254,11 +330,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
         {/* Estado */}
         <div>
           <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Estado</p>
-          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
-            mesa.estado === 'libre'
-              ? `border ${ESTADO_CONFIG[mesa.estado].border} ${ESTADO_CONFIG[mesa.estado].bg} ${ESTADO_CONFIG[mesa.estado].color}`
-              : `${ESTADO_CONFIG[mesa.estado].solidBg} ${ESTADO_CONFIG[mesa.estado].solidText}`
-          }`}>
+          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${ESTADO_CONFIG[mesa.estado].solidBg} ${ESTADO_CONFIG[mesa.estado].solidText}`}>
             {ESTADO_CONFIG[mesa.estado].label}
           </span>
         </div>
@@ -275,7 +347,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
           </div>
           <div className="bg-gray-50 rounded-lg p-3">
             <p className="text-xs text-gray-400">Zona</p>
-            <p className="font-semibold text-gray-800">{ZONA_LABELS[mesa.zona]}</p>
+            <p className="font-semibold text-gray-800">{mesa.zona}</p>
           </div>
         </div>
 
@@ -383,10 +455,12 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
 
 export default function MesasPage() {
   const { mesas, mesaSeleccionada, seleccionarMesa, unirMesas } = useMesasStore()
+  const zonas = useZonasStore((s) => s.zonas)
   const [zonaFiltro, setZonaFiltro] = useState<Zona | 'todas'>('todas')
   const [modoUnion, setModoUnion] = useState(false)
   const [primeraSeleccion, setPrimeraSeleccion] = useState<string | null>(null)
   const [modalNuevaMesa, setModalNuevaMesa] = useState(false)
+  const [modalZonas, setModalZonas] = useState(false)
 
   const mesasFiltradas = zonaFiltro === 'todas' ? mesas : mesas.filter((m) => m.zona === zonaFiltro)
 
@@ -426,12 +500,12 @@ export default function MesasPage() {
           {(Object.entries(ESTADO_CONFIG) as [EstadoMesa, typeof ESTADO_CONFIG[EstadoMesa]][]).map(([estado, cfg]) => {
             const Icon = cfg.icon
             return (
-              <div key={estado} className={`rounded-xl p-3 border ${cfg.bg} ${cfg.border}`}>
+              <div key={estado} className={`rounded-xl p-3 ${cfg.solidBg}`}>
                 <div className="flex items-center justify-between mb-1">
-                  <Icon size={15} className={cfg.color} />
-                  <span className={`text-2xl font-bold ${cfg.color}`}>{conteos[estado]}</span>
+                  <Icon size={15} className={cfg.solidText} />
+                  <span className={`text-2xl font-bold ${cfg.solidText}`}>{conteos[estado]}</span>
                 </div>
-                <p className={`text-xs font-medium ${cfg.color} opacity-80 leading-tight`}>{cfg.label}</p>
+                <p className={`text-xs font-medium ${cfg.solidMuted} leading-tight`}>{cfg.label}</p>
               </div>
             )
           })}
@@ -445,10 +519,10 @@ export default function MesasPage() {
               className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${zonaFiltro === 'todas' ? 'bg-gold-600 text-white border-gold-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gold-300'}`}>
               Todas ({mesas.length})
             </button>
-            {ZONAS.map((zona) => (
-              <button key={zona} onClick={() => setZonaFiltro(zona)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${zonaFiltro === zona ? 'bg-gold-600 text-white border-gold-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gold-300'}`}>
-                {ZONA_LABELS[zona]} ({mesas.filter((m) => m.zona === zona).length})
+            {zonas.map((z) => (
+              <button key={z.id} onClick={() => setZonaFiltro(z.nombre)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${zonaFiltro === z.nombre ? 'bg-gold-600 text-white border-gold-600' : 'bg-white text-gray-600 border-gray-200 hover:border-gold-300'}`}>
+                {z.nombre} ({mesas.filter((m) => m.zona === z.nombre).length})
               </button>
             ))}
           </div>
@@ -474,9 +548,10 @@ export default function MesasPage() {
               <Plus size={15} /> <span className="hidden sm:inline">Nueva mesa</span><span className="sm:hidden">Nueva</span>
             </button>
 
-            {/* Configurar layout */}
-            <button className="p-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
-              <Settings2 size={16} />
+            {/* Zonas */}
+            <button onClick={() => setModalZonas(true)} title="Gestionar zonas"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors">
+              <MapPin size={16} /> <span className="hidden sm:inline">Zonas</span>
             </button>
           </div>
         </div>
@@ -524,6 +599,9 @@ export default function MesasPage() {
 
       {/* Modal nueva mesa */}
       {modalNuevaMesa && <ModalNuevaMesa onCerrar={() => setModalNuevaMesa(false)} />}
+
+      {/* Modal gestionar zonas */}
+      {modalZonas && <ModalZonas onCerrar={() => setModalZonas(false)} />}
     </div>
   )
 }

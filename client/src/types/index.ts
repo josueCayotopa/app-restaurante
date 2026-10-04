@@ -5,6 +5,7 @@ export interface ItemCuenta {
   nombre: string
   cantidad: number
   precioUnitario: number
+  subtotal?: number
 }
 
 export interface CuentaParcial {
@@ -28,7 +29,9 @@ export type EstadoMesa =
   | 'en_limpieza'
   | 'unida'
 
-export type Zona = 'salon' | 'terraza' | 'barra' | 'vip'
+// Antes era un union fijo ('salon'|'terraza'|'barra'|'vip'); ahora las zonas
+// son gestionables (ver zonasStore.ts / GET /api/zonas), así que es texto libre.
+export type Zona = string
 
 export interface Mesa {
   id: string
@@ -51,7 +54,8 @@ export type EstadoItem =
   | 'cancelado'
   | 'devuelto'
 
-export type TipoDescuento = 'pnp' | 'cumpleaño' | 'clases2026'
+// id de una Promocion (gestionadas desde la Carta: /api/carta/promociones)
+export type TipoDescuento = string
 
 export type EstadoComanda =
   | 'abierta'
@@ -90,15 +94,23 @@ export interface Comanda {
   cuentas?: CuentaParcial[]
   tipoDescuento?: TipoDescuento
   notaGeneral?: string
+  // Cobro (lo llena el servidor al cobrar en Caja)
+  metodoPago?: MetodoPago | 'dividida' | null
+  subtotal?: number | null
+  descuentoPct?: number
+  descuentoMonto?: number
+  propina?: number
+  totalCobrado?: number | null
+  montoEfectivo?: number | null
+  metodoResto?: 'tarjeta' | 'yape_plin' | null
+  montoRecibido?: number | null
+  vuelto?: number | null
+  cobradaEn?: string | null
+  cobradaPor?: string | null
 }
 
-export type CategoriaProducto =
-  | 'entradas'
-  | 'fondos'
-  | 'bebidas'
-  | 'cocteles'
-  | 'postres'
-  | 'extras'
+// id de una categoría gestionada desde Productos (/api/categorias)
+export type CategoriaProducto = string
 
 export type TipoPlato = 'plato' | 'fuente'
 
@@ -116,4 +128,33 @@ export interface Producto {
   esAlcoholico?: boolean
   tieneGuarnicion?: boolean
   guarnicionesDisponibles?: string[]
+  seccionCarta?: string | null   // sección de la carta pública (null = no sale en la carta)
+  ordenCarta?: number
+}
+
+// ─── Reportes (GET /api/reportes/resumen) ────────────────────────────────────
+// Ventas netas = subtotal − descuentos (sin propinas). Fechas = día de cobro.
+export interface ResumenReporte {
+  desde: string
+  hasta: string
+  dias: number
+  totales: {
+    pedidos: number
+    subtotal: number
+    descuentos: number
+    ventasNetas: number
+    propinas: number
+    cobrado: number
+    ticketPromedio: number
+    itemsVendidos: number
+    cancelados: number
+    montoCancelado: number
+  }
+  porMetodo: { efectivo: number; tarjeta: number; yape_plin: number }
+  porDia: { fecha: string; pedidos: number; ventas: number }[]
+  porHora: { hora: number; pedidos: number; ventas: number }[]
+  porMozo: { mozo: string; pedidos: number; ventas: number }[]
+  topProductos: { nombre: string; cantidad: number; ventas: number }[]
+  porCategoria: { categoria: string; cantidad: number; ventas: number }[]
+  descuentos: { promocion: string; pedidos: number; monto: number }[]
 }

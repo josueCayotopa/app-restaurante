@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import bcrypt from 'bcryptjs'
 import { PrismaClient } from '@prisma/client'
 import { firmarToken, autenticar } from '../middleware/auth'
+import { normalizarLogin } from '../lib/usuario'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -10,10 +11,11 @@ const prisma = new PrismaClient()
 router.post('/login', async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body
   if (!email || !password) {
-    res.status(400).json({ error: 'Email y contraseña requeridos' })
+    res.status(400).json({ error: 'Usuario y contraseña requeridos' })
     return
   }
-  const usuario = await prisma.usuario.findUnique({ where: { email } })
+  // Acepta el usuario corto ("maria") o el email completo
+  const usuario = await prisma.usuario.findUnique({ where: { email: normalizarLogin(email) } })
   if (!usuario || !usuario.activo) {
     res.status(401).json({ error: 'Credenciales inválidas' })
     return
@@ -26,7 +28,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   const token = firmarToken({ id: usuario.id, email: usuario.email, rol: usuario.rol })
   res.json({
     token,
-    usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
+    usuario: { id: usuario.id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol, cargo: usuario.cargo },
   })
 })
 
@@ -34,7 +36,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 router.get('/me', autenticar, async (req: Request, res: Response): Promise<void> => {
   const usuario = await prisma.usuario.findUnique({
     where: { id: req.usuario!.id },
-    select: { id: true, nombre: true, email: true, rol: true, activo: true },
+    select: { id: true, nombre: true, email: true, rol: true, activo: true, cargo: true },
   })
   if (!usuario) { res.status(404).json({ error: 'Usuario no encontrado' }); return }
   res.json(usuario)
