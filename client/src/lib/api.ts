@@ -1,6 +1,8 @@
-// Por defecto el servidor está en la misma máquina que sirve la app, puerto 3001.
-// Así una tablet que abre http://192.168.1.50:5173 habla con http://192.168.1.50:3001.
-export const BASE = import.meta.env.VITE_API_URL ?? `${location.protocol}//${location.hostname}:3001`
+// La API está en el MISMO origen desde el que se abrió la app:
+//  · en desarrollo, Vite reenvía /api, /uploads y /socket.io al puerto 3001 (vite.config.ts);
+//  · en producción, Node (npm start) o IIS sirven app y API en la misma dirección.
+// Así funciona igual en la PC, en las tablets y detrás de IIS con HTTPS.
+export const BASE = import.meta.env.VITE_API_URL ?? ''
 
 export class ApiError extends Error {
   status: number

@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client'
 
-// Mismo criterio que lib/api.ts: el servidor está en la misma máquina, puerto 3001
-const URL = import.meta.env.VITE_SERVER_URL || `${location.protocol}//${location.hostname}:3001`
+// Mismo criterio que lib/api.ts: mismo origen que la app (VITE_SERVER_URL solo si está en otra máquina)
+const URL = import.meta.env.VITE_SERVER_URL || undefined
 
 export const socket = io(URL, {
   autoConnect: true,
