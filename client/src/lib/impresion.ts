@@ -7,7 +7,7 @@ import { useToastStore } from '../store/toastStore'
 type Tamano = 1 | 'alto' | 2
 type Linea =
   | { t: 'logo' }
-  | { t: 'texto'; texto: string; alinear?: 'izq' | 'centro' | 'der'; negrita?: boolean; tam?: Tamano; invertido?: boolean }
+  | { t: 'texto'; texto: string; alinear?: 'izq' | 'centro' | 'der'; negrita?: boolean; tam?: Tamano; invertido?: boolean; recuadro?: boolean }
   | { t: 'fila'; izq: string; der: string; negrita?: boolean; tam?: Tamano }
   | { t: 'separador'; doble?: boolean }
   | { t: 'espacio' }
@@ -48,7 +48,7 @@ export function documentoAHtml(doc: Documento, ancho: number): string {
       case 'logo': return `<img class="logo" src="${location.origin}/logo.jpeg" onerror="this.remove()" />`
       case 'espacio': return '<div style="height:1em"></div>'
       case 'separador': return `<div class="sep${l.doble ? ' doble' : ''}"></div>`
-      case 'texto': return `<div style="text-align:${l.alinear === 'centro' ? 'center' : l.alinear === 'der' ? 'right' : 'left'};${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}${l.invertido ? 'background:#000;color:#fff;-webkit-text-stroke:0;padding:1px 0;' : ''}">${esc(l.texto)}</div>`
+      case 'texto': return `<div style="text-align:${l.alinear === 'centro' ? 'center' : l.alinear === 'der' ? 'right' : 'left'};${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}${l.invertido ? 'background:#000;color:#fff;-webkit-text-stroke:0;padding:1px 0;' : ''}${l.recuadro ? 'border:2mm solid #000;padding:1.5mm 2mm;margin:2mm 0;' : ''}">${esc(l.texto)}</div>`
       case 'fila': return `<div class="fila" style="${l.negrita ? 'font-weight:900;' : ''}${tamCss(l.tam)}"><span>${esc(l.izq)}</span><span>${esc(l.der)}</span></div>`
     }
   }).join('\n')

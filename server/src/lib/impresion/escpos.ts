@@ -71,6 +71,8 @@ function lineaABytes(l: Linea, cols: number): number[] {
       return out
     case 'texto': {
       const max = Math.floor(cols / factorAncho(l.tam))
+      // Recuadro: las térmicas no dibujan bordes → línea doble arriba y abajo (en tamaño normal)
+      if (l.recuadro) { out.push(ESC, 0x61, 0, ...tamanoBytes(1), ...codificar('='.repeat(cols))); nl() }
       out.push(ESC, 0x61, l.alinear === 'centro' ? 1 : l.alinear === 'der' ? 2 : 0)
       out.push(ESC, 0x45, l.negrita ? 1 : 0, ...tamanoBytes(l.tam))
       if (l.invertido) out.push(GS, 0x42, 1)
@@ -78,6 +80,7 @@ function lineaABytes(l: Linea, cols: number): number[] {
       const sangria = ' '.repeat(l.texto.length - l.texto.trimStart().length)
       for (const r of partir(l.texto, max - sangria.length)) { out.push(...codificar(sangria + r)); nl() }
       if (l.invertido) out.push(GS, 0x42, 0)
+      if (l.recuadro) { out.push(...tamanoBytes(1), ESC, 0x45, 0, ESC, 0x61, 0, ...codificar('='.repeat(cols))); nl() }
       out.push(ESC, 0x45, 0, ...tamanoBytes(1), ESC, 0x61, 0)
       return out
     }

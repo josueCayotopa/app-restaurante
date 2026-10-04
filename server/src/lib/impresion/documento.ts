@@ -7,7 +7,7 @@ export type Tamano = 1 | 'alto' | 2
 
 export type Linea =
   | { t: 'logo' }
-  | { t: 'texto'; texto: string; alinear?: Alineacion; negrita?: boolean; tam?: Tamano; invertido?: boolean }
+  | { t: 'texto'; texto: string; alinear?: Alineacion; negrita?: boolean; tam?: Tamano; invertido?: boolean; recuadro?: boolean }
   | { t: 'fila'; izq: string; der: string; negrita?: boolean; tam?: Tamano }
   | { t: 'separador'; doble?: boolean }
   | { t: 'espacio' }
