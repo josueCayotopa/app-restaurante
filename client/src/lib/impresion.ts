@@ -1,5 +1,6 @@
 import { apiFetch } from './api'
 import { socket } from './socket'
+import { useToastStore } from '../store/toastStore'
 
 // ── Modelo de ticket (el mismo que arma el servidor en server/src/lib/impresion) ──
 
@@ -115,7 +116,11 @@ socket.on('impresion:equipo', (
   data: { impresoraId: string; documento: Documento; ancho: number; copias: number },
   responder?: (ok: boolean) => void,
 ) => {
-  if (!impresorasDeEsteEquipo().includes(data.impresoraId)) { responder?.(false); return }
-  imprimirEnNavegador(data.documento, data.ancho, data.copias).catch(() => {})
+  const mia = impresorasDeEsteEquipo().includes(data.impresoraId)
+  console.info(`[impresion] Trabajo recibido: "${data.documento.titulo}" · ${mia ? 'esta PC lo imprime' : 'no es para esta PC'}`)
+  if (!mia) { responder?.(false); return }
+  // Aviso visible: confirma que el ticket llegó a esta PC (si no sale papel, el problema es el navegador/driver)
+  useToastStore.getState().agregar({ tipo: 'info', titulo: '🖨 Imprimiendo', mensaje: data.documento.titulo, duracion: 4000 })
+  imprimirEnNavegador(data.documento, data.ancho, data.copias).catch((e) => console.error('[impresion] Error al imprimir:', e))
   responder?.(true)
 })
