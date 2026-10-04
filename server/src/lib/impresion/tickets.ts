@@ -95,7 +95,7 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
     l.push(fila('  Efectivo', S(c.montoEfectivo)), fila(`  ${METODO[c.metodoResto ?? ''] ?? 'Otro'}`, S(total - (c.montoEfectivo ?? 0))))
   }
   if (metodo === 'dividida') for (const ct of c.cuentas ?? []) l.push(fila(`  Cuenta ${ct.numero} - ${METODO[ct.metodoPago ?? ''] ?? '-'}`, S(ct.total)))
-  l.push(espacio, texto('¡Gracias por su visita!', { alinear: 'centro', negrita: true }), texto('Un restaurante para la familia', { alinear: 'centro' }), texto('Ebenezer', { alinear: 'centro', negrita: true, tam: 2, recuadro: true }))
+  l.push(espacio, texto('¡Gracias por su visita!', { alinear: 'centro', negrita: true }), texto('Un restaurante para la familia', { alinear: 'centro' }), texto('Ebenezer', { alinear: 'centro', negrita: true, tam: 'alto' }))
   return {
     titulo: `Cobro · Mesa ${mesaLabel(c)} · ${S(total)}`,
     lineas: l,
