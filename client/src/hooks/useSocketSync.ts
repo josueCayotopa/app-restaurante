@@ -44,6 +44,18 @@ function etiquetaDe(comandaId: string, numeroMesa?: number) {
   return numeroMesa ? ` — Mesa ${numeroMesa}` : ''
 }
 
+// En las pantallas de Cocina / Bar solo se avisa (toast y sonido) lo de su propia área
+function areaDePantalla(): 'cocina' | 'bar' | null {
+  const ruta = window.location.pathname
+  if (ruta.startsWith('/cocina')) return 'cocina'
+  if (ruta.startsWith('/bar')) return 'bar'
+  return null
+}
+const esDeOtraArea = (area: string | undefined) => {
+  const pantalla = areaDePantalla()
+  return pantalla !== null && (area === 'bar' ? 'bar' : 'cocina') !== pantalla
+}
+
 function formatearItem(i: ItemResumen): string {
   let d = `${i.cantidad}× ${i.nombre}`
   if (i.tipoPlato) d += ` [${i.tipoPlato === 'plato' ? 'Plato' : 'Fuente'}]`
@@ -65,7 +77,7 @@ export function useSocketSync() {
     const onItemActualizado = (data: ItemActualizadoPayload) => {
       aplicarItemRemoto(data.comandaId, data.item, data.comandaEstado)
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
-      if (esPropio) return
+      if (esPropio || esDeOtraArea(data.item.area)) return
       if (data.item.estado === 'listo') {
         agregarToast({
           tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
@@ -91,7 +103,7 @@ export function useSocketSync() {
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
       if (esPropio) return
       const mesa = etiquetaComanda(data.comanda)
-      if (data.itemsCocina.length > 0) {
+      if (data.itemsCocina.length > 0 && !esDeOtraArea('cocina')) {
         agregarToast({
           tipo: 'cocina',
           titulo: data.nuevo ? `🍽 Ticket nuevo — ${mesa}` : `🍽 Adición — ${mesa}`,
@@ -100,7 +112,7 @@ export function useSocketSync() {
         })
         reproducirAlerta()
       }
-      if (data.itemsBar.length > 0) {
+      if (data.itemsBar.length > 0 && !esDeOtraArea('bar')) {
         agregarToast({
           tipo: 'bar',
           titulo: data.nuevo ? `🍺 Ticket nuevo — ${mesa}` : `🍺 Adición — ${mesa}`,
@@ -114,7 +126,7 @@ export function useSocketSync() {
     const onItemDevuelto = (data: ItemDevueltoPayload) => {
       aplicarItemRemoto(data.comandaId, data.item)
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
-      if (esPropio) return
+      if (esPropio || esDeOtraArea(data.item.area)) return
       agregarToast({
         tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
         titulo: `↩ Devolución${etiquetaDe(data.comandaId, data.numeroMesa)}`,

@@ -103,7 +103,7 @@ function ItemKDS({
           </div>
         )}
         {item.nota && (
-          <p className={`text-xs italic mt-0.5 font-semibold ${activo ? 'text-gray-900' : 'text-rojo-600'}`}>⚠ {item.nota}</p>
+          <p className={`text-base leading-snug font-bold mt-1 px-2 py-1 rounded-lg ${activo ? 'bg-white/70 text-gray-900' : 'bg-rojo-50 text-rojo-700'}`}>⚠ {item.nota}</p>
         )}
       </div>
       {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
@@ -227,6 +227,13 @@ function TarjetaComandaKDS({ comanda, todosLosItems, itemsColumna, columna }: {
             ))}
           </div>
           {itemsAMostrar.length > 0 && <div className="border-t border-dashed border-rojo-200 my-2" />}
+        </div>
+      )}
+
+      {/* Nota general de la comanda (bien visible) */}
+      {comanda.notaGeneral && (
+        <div className="mx-3 mt-3 px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-base font-bold text-gray-900 leading-snug">
+          📋 {comanda.notaGeneral}
         </div>
       )}
 

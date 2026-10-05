@@ -26,7 +26,6 @@ export type EstadoMesa =
   | 'ocupada'
   | 'reservada'
   | 'esperando_pago'
-  | 'en_limpieza'
   | 'unida'
 
 // Antes era un union fijo ('salon'|'terraza'|'barra'|'vip'); ahora las zonas

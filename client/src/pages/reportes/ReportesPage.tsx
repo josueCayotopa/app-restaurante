@@ -325,13 +325,13 @@ export default function ReportesPage() {
         {/* Estado actual de mesas (en vivo, no depende del rango) */}
         <Tarjeta titulo="Estado actual de mesas" icon={Table2}>
           <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
-            {(['libre', 'ocupada', 'reservada', 'esperando_pago', 'en_limpieza'] as const).map((estado) => {
+            {(['libre', 'ocupada', 'reservada', 'esperando_pago'] as const).map((estado) => {
               const count = mesas.filter((m) => m.estado === estado).length
-              const labels = { libre: 'Libres', ocupada: 'Ocupadas', reservada: 'Reservadas', esperando_pago: 'Esp. pago', en_limpieza: 'Limpieza' }
+              const labels = { libre: 'Libres', ocupada: 'Ocupadas', reservada: 'Reservadas', esperando_pago: 'Esp. pago' }
               // Misma paleta que MesasPage: verde=libre, rojo=ocupada, gris=reservada, azul=esperando pago, dorado=limpieza
               const colores = {
                 libre: 'text-white bg-green-500', ocupada: 'text-white bg-rojo-500', reservada: 'text-white bg-gray-500',
-                esperando_pago: 'text-white bg-steel-500', en_limpieza: 'text-gray-900 bg-gold-500',
+                esperando_pago: 'text-white bg-steel-500',
               }
               return (
                 <div key={estado} className={`rounded-xl p-3 text-center ${colores[estado]}`}>

@@ -26,7 +26,8 @@ export const useMesasStore = create<MesasState>((set, get) => ({
     if (get().cargando) return
     set({ cargando: true })
     try {
-      const mesas = await apiFetch<Mesa[]>('/api/mesas')
+      // 'en_limpieza' ya no existe: si llega de datos antiguos se muestra como libre
+      const mesas = (await apiFetch<Mesa[]>('/api/mesas')).map((m) => ((m.estado as string) === 'en_limpieza' ? { ...m, estado: 'libre' as EstadoMesa } : m))
       set({ mesas, cargando: false })
     } catch (e) {
       console.error('[mesas] Error cargando:', e)
@@ -48,6 +49,7 @@ export const useMesasStore = create<MesasState>((set, get) => ({
 
   // Cambio hecho desde otro equipo (o al cobrar). Si la mesa se libera, se separan las que estaban unidas.
   aplicarEstadoRemoto: (id, estado) => {
+    if ((estado as string) === 'en_limpieza') estado = 'libre'
     if (estado === 'libre' && get().mesas.find((m) => m.id === id)?.mesasUnidasIds?.length) get().separarMesa(id)
     set((s) => ({ mesas: s.mesas.map((m) => (m.id === id ? { ...m, estado } : m)) }))
   },

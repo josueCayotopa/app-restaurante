@@ -81,7 +81,7 @@ function ItemBar({
           {item.nombre}
         </p>
         {item.nota && (
-          <p className={`text-xs italic font-semibold ${activo ? 'text-gray-900' : 'text-rojo-600'}`}>⚠ {item.nota}</p>
+          <p className={`text-base leading-snug font-bold mt-1 px-2 py-1 rounded-lg ${activo ? 'bg-white/70 text-gray-900' : 'bg-rojo-50 text-rojo-700'}`}>⚠ {item.nota}</p>
         )}
       </div>
       {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
@@ -177,6 +177,13 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
           style={{ width: `${progreso}%` }}
         />
       </div>
+
+      {/* Nota general de la comanda (bien visible) */}
+      {comanda.notaGeneral && (
+        <div className="mx-3 mt-3 px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-base font-bold text-gray-900 leading-snug">
+          📋 {comanda.notaGeneral}
+        </div>
+      )}
 
       {/* Ítems de esta columna */}
       <div className="flex-1 p-3 space-y-2">

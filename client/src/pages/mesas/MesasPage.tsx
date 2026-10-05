@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import Header from '../../components/layout/Header'
 import { useMesasStore } from '../../store/mesasStore'
+import { useAuthStore } from '../../store/authStore'
 import { useComandasStore } from '../../store/comandasStore'
 import { useZonasStore } from '../../store/zonasStore'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
 import type { Mesa, EstadoMesa, Zona } from '../../types'
 import {
   Users, Plus, ClipboardList, X, CheckCircle, AlertCircle,
-  Brush, BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt,
+  BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt,
 } from 'lucide-react'
 import { imprimirPrecuenta } from '../../lib/impresion'
 import { totalAPagar } from '../../components/caja/ModalCobro'
@@ -30,13 +31,12 @@ interface EstadoCfg {
 }
 
 // Colores de estado definidos por el cliente: verde=libre, rojo=ocupada,
-// amarillo=en_limpieza, gris=reservada, azul=esperando_pago, naranja=unida.
+// gris=reservada, azul=esperando_pago, naranja=unida.
 const ESTADO_CONFIG: Record<EstadoMesa, EstadoCfg> = {
   libre:          { label: 'Libre',       icon: CheckCircle, color: 'text-green-700',  bg: 'bg-green-50',  border: 'border-green-300',  solidBg: 'bg-green-500',  solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
   ocupada:        { label: 'Ocupada',     icon: Users,       color: 'text-rojo-700',   bg: 'bg-rojo-100',  border: 'border-rojo-300',   solidBg: 'bg-rojo-500',   solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
   reservada:      { label: 'Reservada',   icon: BookOpen,    color: 'text-gray-600',   bg: 'bg-gray-100',  border: 'border-gray-300',   solidBg: 'bg-gray-500',   solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
   esperando_pago: { label: 'Esp. pago',   icon: AlertCircle, color: 'text-steel-700',  bg: 'bg-steel-50',  border: 'border-steel-300',  solidBg: 'bg-steel-500',  solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
-  en_limpieza:    { label: 'En limpieza', icon: Brush,       color: 'text-gold-700',   bg: 'bg-gold-50',   border: 'border-gold-300',   solidBg: 'bg-gold-500',   solidText: 'text-gray-900', solidMuted: 'text-gray-900/70', chip: 'bg-black/10 text-gray-900' },
   unida:          { label: 'Unida',       icon: Link2,       color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-300', solidBg: 'bg-orange-500', solidText: 'text-white',    solidMuted: 'text-white/75',    chip: 'bg-black/15 text-white' },
 }
 
@@ -300,13 +300,14 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
 // ─── Panel de Mesa ────────────────────────────────────────────────────────────
 
 function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
+  const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
   const { cambiarEstado, eliminarMesa, separarMesa, mesas } = useMesasStore()
   const getComandaByMesa = useComandasStore((s) => s.getComandaByMesa)
   const comanda = getComandaByMesa(mesa.id)
   const [nuevaComandaAbierta, setNuevaComandaAbierta] = useState(false)
   const [editarComanda, setEditarComanda] = useState(false)
 
-  const transiciones = (['libre', 'ocupada', 'reservada', 'esperando_pago', 'en_limpieza'] as EstadoMesa[])
+  const transiciones = (['libre', 'ocupada', 'reservada', 'esperando_pago'] as EstadoMesa[])
     .filter((e) => e !== mesa.estado && e !== 'unida')
 
   const esPrincipal = (mesa.mesasUnidasIds?.length ?? 0) > 0
@@ -432,11 +433,13 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
           </div>
         </div>
 
-        {/* Eliminar mesa */}
-        <button onClick={() => { eliminarMesa(mesa.id); onCerrar() }}
+        {/* Eliminar mesa: solo el administrador */}
+        {esAdmin && (
+        <button onClick={() => { if (confirm(`¿Eliminar la mesa ${mesa.numero}?`)) { eliminarMesa(mesa.id); onCerrar() } }}
           className="w-full flex items-center justify-center gap-2 py-2 border border-red-200 text-red-500 rounded-lg text-sm hover:bg-red-50 transition-colors">
           <Trash2 size={14} /> Eliminar mesa
         </button>
+        )}
       </div>
 
       {/* Nueva comanda */}
@@ -474,6 +477,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
 
 export default function MesasPage() {
   const { mesas, mesaSeleccionada, seleccionarMesa, unirMesas } = useMesasStore()
+  const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
   const zonas = useZonasStore((s) => s.zonas)
   const [zonaFiltro, setZonaFiltro] = useState<Zona | 'todas'>('todas')
   const [modoUnion, setModoUnion] = useState(false)
@@ -488,7 +492,6 @@ export default function MesasPage() {
     ocupada: mesas.filter((m) => m.estado === 'ocupada').length,
     reservada: mesas.filter((m) => m.estado === 'reservada').length,
     esperando_pago: mesas.filter((m) => m.estado === 'esperando_pago').length,
-    en_limpieza: mesas.filter((m) => m.estado === 'en_limpieza').length,
     unida: mesas.filter((m) => m.estado === 'unida').length,
   }
 
@@ -515,7 +518,7 @@ export default function MesasPage() {
 
       <div className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5 overflow-y-auto">
         {/* KPIs */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
           {(Object.entries(ESTADO_CONFIG) as [EstadoMesa, typeof ESTADO_CONFIG[EstadoMesa]][]).map(([estado, cfg]) => {
             const Icon = cfg.icon
             return (
@@ -561,7 +564,8 @@ export default function MesasPage() {
               </button>
             )}
 
-            {/* Nueva mesa */}
+            {/* Nueva mesa y zonas: solo el administrador */}
+            {esAdmin && <>
             <button onClick={() => setModalNuevaMesa(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 transition-colors">
               <Plus size={15} /> <span className="hidden sm:inline">Nueva mesa</span><span className="sm:hidden">Nueva</span>
@@ -572,6 +576,7 @@ export default function MesasPage() {
               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-gray-500 text-sm font-medium hover:bg-gray-50 transition-colors">
               <MapPin size={16} /> <span className="hidden sm:inline">Zonas</span>
             </button>
+            </>}
           </div>
         </div>
 
