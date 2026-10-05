@@ -62,7 +62,7 @@ async function main() {
 
   // ── Productos — Carta real Chicharronería CADE ──────────────────────────
   const guarnicionesPlato = ['Arroz', 'Papa guisada', 'Mote', 'Yuca', 'Menestra', 'Chifles', 'Cancha', 'Humitas', 'Tamales']
-  const guarnicionesCaldo = ['Papa sancochada', 'Fideos', 'Arroz', 'Yuca', 'Mote', 'Cebolla china', 'Huevo duro', 'Ají molido']
+  const guarnicionesCaldo = ['Papa sancochada', 'Fideos', 'Arroz', 'Yuca', 'Mote', 'Cebolla china', 'Ají molido', 'Humitas', 'Tamales']
 
   type ProductoSeed = {
     nombre: string
