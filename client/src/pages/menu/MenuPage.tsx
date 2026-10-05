@@ -38,7 +38,18 @@ function ModalProducto({
     esAlcoholico: producto?.esAlcoholico ?? false,
     imagen: producto?.imagen ?? '',
     seccionCarta: producto ? (producto.seccionCarta ?? '') : 'plato',
+    tieneGuarnicion: producto?.tieneGuarnicion ?? false,
+    guarnicionesDisponibles: producto?.guarnicionesDisponibles ?? [],
   })
+  const [nuevaGuarnicion, setNuevaGuarnicion] = useState('')
+  const agregarGuarnicion = () => {
+    const g = nuevaGuarnicion.trim()
+    if (!g) return
+    if (!form.guarnicionesDisponibles.some((x) => x.toLowerCase() === g.toLowerCase())) {
+      setForm({ ...form, guarnicionesDisponibles: [...form.guarnicionesDisponibles, g] })
+    }
+    setNuevaGuarnicion('')
+  }
   const [subiendoImagen, setSubiendoImagen] = useState(false)
   const [errorImagen, setErrorImagen] = useState('')
   const inputImagenRef = useRef<HTMLInputElement>(null)
@@ -190,6 +201,43 @@ function ModalProducto({
             <p className="text-[11px] text-gray-400 mt-1">
               Para tamaños usa el nombre con paréntesis, ej. <strong>Chicharrón (Personal)</strong> y <strong>Chicharrón (Fuente)</strong>: en la carta salen en una sola fila.
             </p>
+          </div>
+
+          {/* Guarniciones: el mozo elige entre estas al pedir el plato */}
+          <div className="border border-gray-100 rounded-xl p-3 space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input type="checkbox" checked={form.tieneGuarnicion}
+                onChange={(e) => setForm({ ...form, tieneGuarnicion: e.target.checked })}
+                className="w-4 h-4 accent-gold-600" />
+              Lleva guarniciones (el mozo las elige al pedir)
+            </label>
+            {form.tieneGuarnicion && (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {form.guarnicionesDisponibles.map((g) => (
+                    <span key={g} className="inline-flex items-center gap-1 text-xs bg-gold-500 text-gray-900 font-medium pl-2 pr-1 py-1 rounded-full">
+                      {g}
+                      <button type="button" title={`Quitar ${g}`}
+                        onClick={() => setForm({ ...form, guarnicionesDisponibles: form.guarnicionesDisponibles.filter((x) => x !== g) })}
+                        className="w-4 h-4 rounded-full hover:bg-black/15 flex items-center justify-center">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                  {form.guarnicionesDisponibles.length === 0 && <span className="text-xs text-gray-400">Sin guarniciones todavía</span>}
+                </div>
+                <div className="flex gap-2">
+                  <input value={nuevaGuarnicion} onChange={(e) => setNuevaGuarnicion(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregarGuarnicion() } }}
+                    placeholder="Ej: Humitas"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-gold-500" />
+                  <button type="button" onClick={agregarGuarnicion}
+                    className="px-3 py-1.5 rounded-lg bg-gray-800 text-white text-sm font-semibold hover:bg-gray-900">
+                    Agregar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-3">

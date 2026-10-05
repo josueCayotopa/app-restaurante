@@ -612,7 +612,8 @@ export default function MesasPage() {
       {mesaSeleccionada && !modoUnion && (
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => seleccionarMesa(null)} />
-          <PanelMesa mesa={mesaSeleccionada} onCerrar={() => seleccionarMesa(null)} />
+          {/* Siempre la versión actual de la mesa (no la copia del momento en que se abrió el panel) */}
+          <PanelMesa mesa={mesas.find((m) => m.id === mesaSeleccionada.id) ?? mesaSeleccionada} onCerrar={() => seleccionarMesa(null)} />
         </>
       )}
 

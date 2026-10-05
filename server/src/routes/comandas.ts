@@ -175,7 +175,8 @@ router.post('/', autenticar, async (req: Request, res: Response): Promise<void> 
     },
     include: { items: true },
   })
-  await prisma.mesa.update({ where: { id: mesaId }, data: { estado: 'ocupada' } })
+  const ocupada = await prisma.mesa.update({ where: { id: mesaId }, data: { estado: 'ocupada' } })
+  getIo().emit('mesa:estado_actualizado', ocupada)
   const mapeada = mapComanda(comanda as never)
   emitirItemsAgregados(mapeada, mapeada.items as ItemMapeado[], true, req.body.socketId)
   res.status(201).json(mapeada)
@@ -204,6 +205,11 @@ router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Pro
     data: { estado },
     include: { items: true },
   })
+  // Comanda de mesa cancelada: la mesa vuelve a estar libre
+  if (estado === 'cancelada' && comanda.mesaId) {
+    const mesa = await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'libre' } }).catch(() => null)
+    if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+  }
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
   res.json(mapeada)
