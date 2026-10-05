@@ -7,8 +7,10 @@ import NuevaComanda from '../../components/comandas/NuevaComanda'
 import type { Mesa, EstadoMesa, Zona } from '../../types'
 import {
   Users, Plus, ClipboardList, X, CheckCircle, AlertCircle,
-  Brush, BookOpen, Link2, Link2Off, Trash2, Check, MapPin,
+  Brush, BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt,
 } from 'lucide-react'
+import { imprimirPrecuenta } from '../../lib/impresion'
+import { totalAPagar } from '../../components/caja/ModalCobro'
 
 // ─── Configuraciones ──────────────────────────────────────────────────────────
 
@@ -302,6 +304,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
   const getComandaByMesa = useComandasStore((s) => s.getComandaByMesa)
   const comanda = getComandaByMesa(mesa.id)
   const [nuevaComandaAbierta, setNuevaComandaAbierta] = useState(false)
+  const [editarComanda, setEditarComanda] = useState(false)
 
   const transiciones = (['libre', 'ocupada', 'reservada', 'esperando_pago', 'en_limpieza'] as EstadoMesa[])
     .filter((e) => e !== mesa.estado && e !== 'unida')
@@ -378,7 +381,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
           <div>
             <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Comanda activa</p>
             <div className="border border-gray-200 rounded-lg divide-y divide-gray-100">
-              {comanda.items.map((item) => (
+              {comanda.items.filter((i) => i.estado !== 'cancelado' && i.estado !== 'devuelto').map((item) => (
                 <div key={item.id} className="flex items-center justify-between px-3 py-2">
                   <div>
                     <p className="text-sm text-gray-800">{item.cantidad}× {item.nombre}</p>
@@ -391,12 +394,19 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
               ))}
               <div className="flex justify-between px-3 py-2 bg-gray-50">
                 <span className="text-sm font-semibold">Total</span>
-                <span className="text-sm font-bold text-gold-700">S/ {comanda.total.toFixed(2)}</span>
+                <span className="text-sm font-bold text-gold-700">S/ {totalAPagar(comanda).toFixed(2)}</span>
               </div>
             </div>
-            <button className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-gold-600 text-white text-sm font-medium hover:bg-gold-700 transition-colors">
-              <ClipboardList size={15} /> Ver comanda completa
-            </button>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => setEditarComanda(true)}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-gold-600 text-white text-sm font-medium hover:bg-gold-700 transition-colors">
+                <ClipboardList size={15} /> Agregar / quitar
+              </button>
+              <button onClick={() => imprimirPrecuenta(comanda.id)}
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg border border-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors">
+                <Receipt size={15} /> Precuenta
+              </button>
+            </div>
           </div>
         ) : (
           <div className="text-center py-6 text-gray-400">
@@ -439,6 +449,15 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
         </div>
       )}
 
+      {editarComanda && comanda && (
+        <NuevaComanda
+          mesaId={comanda.mesaId}
+          numeroMesa={comanda.numeroMesa}
+          mesasUnidas={comanda.mesasUnidas}
+          comandaExistente={comanda}
+          onCerrar={() => setEditarComanda(false)}
+        />
+      )}
       {nuevaComandaAbierta && (
         <NuevaComanda
           mesaId={mesa.id}

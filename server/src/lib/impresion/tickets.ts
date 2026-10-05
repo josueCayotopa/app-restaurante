@@ -119,6 +119,51 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
   }
 }
 
+// ── Precuenta (para que el cliente revise antes de pagar) ───────────────────
+// promo: el descuento elegido al tomar la comanda (Caja aún puede cambiarlo al cobrar)
+export function ticketPrecuenta(c: ComandaTicket, promo?: { nombre: string; porcentaje: number } | null): Documento {
+  const items = c.items.filter((x) => x.estado !== 'cancelado' && x.estado !== 'devuelto')
+  const subtotal = Math.round(items.reduce((a, i) => a + i.cantidad * i.precioUnitario, 0) * 100) / 100
+  const descuento = promo ? Math.round(subtotal * (promo.porcentaje / 100) * 100) / 100 : 0
+  const descartable = c.descartable ?? 0
+  const total = Math.round((subtotal - descuento + descartable) * 100) / 100
+  const l: Linea[] = [
+    ...encabezado('PRECUENTA'),
+    ...(c.tipo === 'pedido'
+      ? [fila('Pedido', `#${c.numero ?? ''}`), fila('Cliente', c.clienteNombre ?? '-')]
+      : [fila('Mesa', mesaLabel(c)), fila('Mozo', c.mozo)]),
+    fila('Fecha', fechaHora(new Date())),
+    separador(),
+  ]
+  for (const i of items) l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
+  if (descartable > 0) l.push(fila('Descartable (envases)', S(descartable)))
+  l.push(separador(), fila('Subtotal', S(subtotal + descartable)))
+  if (descuento > 0 && promo) l.push(fila(`Dcto. ${promo.nombre} (${promo.porcentaje}%)`, `-${S(descuento)}`))
+  l.push(separador(), fila('TOTAL A PAGAR', S(total), { negrita: true, tam: 'alto' }), separador())
+  l.push(
+    texto('Documento no válido como comprobante de pago', { alinear: 'centro' }),
+    espacio,
+    texto('Un restaurante para la familia', { alinear: 'centro' }),
+    texto('Ebenezer', { alinear: 'centro', negrita: true, tam: 'alto' }),
+    espacio, espacio,
+  )
+  return { titulo: `Precuenta · ${etiquetaComanda(c)} · ${S(total)}`, lineas: l }
+}
+
+// ── Anulación para Cocina / Bar ─────────────────────────────────────────────
+// Si el ticket del plato ya salió en papel, avisa que NO se prepare.
+export function ticketAnulacion(c: ComandaTicket, items: ItemTicket[], area: 'cocina' | 'bar'): Documento {
+  const l: Linea[] = [
+    texto('*** ANULADO ***', { alinear: 'centro', negrita: true, invertido: true, tam: 'alto' }),
+    texto(c.tipo === 'pedido' ? `PEDIDO #${c.numero ?? ''} ${c.clienteNombre ?? ''}`.trim() : `MESA ${mesaLabel(c)}`, { alinear: 'centro', negrita: true, tam: 2 }),
+    fila(`${c.tipo === 'pedido' ? 'Tomó' : 'Mozo'}: ${c.mozo}`, horaCorta(new Date())),
+    separador(true),
+  ]
+  for (const i of items) l.push(texto(`${i.cantidad} x ${i.nombre}`, { negrita: true, tam: 'alto' }))
+  l.push(separador(true), texto('NO PREPARAR', { alinear: 'centro', negrita: true, tam: 'alto' }), separador(true))
+  return { titulo: `${area === 'cocina' ? 'Cocina' : 'Bar'} · ANULADO · ${etiquetaComanda(c)}`, lineas: l }
+}
+
 // ── Cierre de caja ──────────────────────────────────────────────────────────
 export function ticketCierre(s: SesionTicket): Documento {
   const dif = s.diferencia ?? 0

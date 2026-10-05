@@ -109,6 +109,7 @@ interface ComandasState {
   agregarItem:            (comandaId: string, item: ItemComanda) => void
   agregarItemsAComanda:   (comandaId: string, items: ItemComanda[]) => Promise<ResultadoEnvio>
   eliminarItem:           (comandaId: string, itemId: string) => void
+  anularItem:             (comandaId: string, itemId: string) => Promise<void>
   devolverItem:           (comandaId: string, itemId: string) => AreaProduccion | null
   actualizarDescuento:    (comandaId: string, descuento: TipoDescuento | undefined) => void
   actualizarNotaGeneral:  (comandaId: string, nota: string) => void
@@ -274,6 +275,12 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       body: { items: nuevosItems.map(itemDto) },
       efecto: { tipo: 'items', comandaId, items: nuevosItems },
     }),
+
+  // Quitar un plato ya enviado que la cocina/bar aún no aceptó (el servidor lo valida)
+  anularItem: async (comandaId, itemId) => {
+    const item = await apiFetch<ItemComanda>(`/api/comandas/${comandaId}/items/${itemId}/anular`, { method: 'POST', body: JSON.stringify({ socketId: socket.id }) })
+    get().aplicarItemRemoto(comandaId, item)
+  },
 
   eliminarItem: (comandaId, itemId) =>
     set((s) => ({

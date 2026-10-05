@@ -75,6 +75,15 @@ export function useSocketSync() {
         })
         reproducirAlerta()
       }
+      if (data.item.estado === 'cancelado') {
+        agregarToast({
+          tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
+          titulo: `🗑 Anulado${etiquetaDe(data.comandaId, data.numeroMesa)}`,
+          mensaje: `${data.item.cantidad}× ${data.item.nombre} — NO preparar`,
+          duracion: 8000,
+        })
+        reproducirAlerta()
+      }
     }
 
     const onItemsAgregados = (data: ItemsAgregadosPayload) => {

@@ -5,7 +5,7 @@ import ModalCobro, { soles, itemsCobrables, totalAPagar } from '../../components
 import PanelCaja from '../../components/caja/PanelCaja'
 import { useCajaStore } from '../../store/cajaStore'
 import { useComandasStore } from '../../store/comandasStore'
-import { imprimirCobro, METODO_LABEL } from '../../lib/impresion'
+import { imprimirCobro, imprimirPrecuenta, METODO_LABEL } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import { apiFetch } from '../../lib/api'
 import { socket } from '../../lib/socket'
@@ -44,7 +44,13 @@ function TarjetaCobro({ comanda, cajaAbierta, onCobrar, onDividir }: { comanda: 
             </p>
           </div>
         </div>
-        <span className="text-lg font-bold text-gold-700">{soles(totalAPagar(comanda))}</span>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => imprimirPrecuenta(comanda.id)} title="Imprimir precuenta"
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+            <Printer size={15} />
+          </button>
+          <span className="text-lg font-bold text-gold-700">{soles(totalAPagar(comanda))}</span>
+        </div>
       </div>
 
       {dividida && (

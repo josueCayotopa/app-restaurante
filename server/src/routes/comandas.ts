@@ -5,7 +5,7 @@ import { getIo } from '../sockets/io'
 import { subtotalDeItems, validarPago, calcularTotales, DESCARTABLE_LLEVAR } from '../lib/cobro'
 import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
-import { imprimirComandaAuto } from './impresion'
+import { imprimirComandaAuto, imprimirAnulacionAuto } from './impresion'
 import { resolverMozo } from './turnos'
 import { descontarVenta, devolverVenta, enSegundoPlano, SIN_PREPARAR } from '../lib/inventarioVentas'
 
@@ -268,6 +268,33 @@ router.patch('/:id/items/:itemId/estado', autenticar, async (req: Request, res: 
     comandaEstado,
     origenSocketId: socketId,
   })
+  res.json(mapeada)
+})
+
+// ── POST /api/comandas/:id/items/:itemId/anular ─────────────────────────────
+// El mozo quita un plato mientras la cocina/bar NO lo haya aceptado (sigue "pendiente").
+// Es atómico: si la cocina lo acepta en el mismo instante, gana la cocina y se rechaza.
+router.post('/:id/items/:itemId/anular', autenticar, async (req: Request, res: Response): Promise<void> => {
+  const { id, itemId } = req.params as { id: string; itemId: string }
+  const comanda = await prisma.comanda.findUnique({ where: { id } })
+  if (!comanda) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+  if (comanda.estado === 'cerrada' || comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda ya está cerrada' }); return }
+  if (comanda.cobradaEn) { res.status(409).json({ error: 'El pedido ya está pagado: no se pueden quitar platos' }); return }
+  const actual = await prisma.itemComanda.findFirst({ where: { id: itemId, comandaId: id } })
+  if (!actual) { res.status(404).json({ error: 'Plato no encontrado' }); return }
+  if (actual.estado === 'cancelado') { res.json(mapItem(actual as never)); return }   // reintento
+
+  const r = await prisma.itemComanda.updateMany({ where: { id: itemId, comandaId: id, estado: { in: SIN_PREPARAR } }, data: { estado: 'cancelado' } })
+  if (r.count === 0) {
+    res.status(409).json({ error: `${actual.area === 'bar' ? 'El bar' : 'La cocina'} ya aceptó este plato: no se puede quitar (usa devolución)` })
+    return
+  }
+  const item = (await prisma.itemComanda.findUnique({ where: { id: itemId } }))!
+  enSegundoPlano(devolverVenta(item.id, `Anulado por el mozo · ${item.cantidad}× ${item.nombre}`), 'devolver ítem')
+
+  const mapeada = mapItem(item as never)
+  getIo().emit('comanda:item_actualizado', { comandaId: id, numeroMesa: comanda.numeroMesa, item: mapeada, origenSocketId: req.body?.socketId })
+  imprimirAnulacionAuto({ ...comanda, mesasUnidas: comanda.mesasUnidas ? JSON.parse(comanda.mesasUnidas) : null, items: [] } as never, [mapeada] as never)
   res.json(mapeada)
 })
 

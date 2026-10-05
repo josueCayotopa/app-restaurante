@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
 import { imprimir, obtenerHistorial, reintentar, invalidarImpresoras, type Area } from '../lib/impresion/servicio'
-import { ticketComanda, ticketCobro, ticketCierre, ticketPrueba, type ItemTicket } from '../lib/impresion/tickets'
+import { ticketComanda, ticketCobro, ticketCierre, ticketPrueba, ticketPrecuenta, ticketAnulacion, type ItemTicket } from '../lib/impresion/tickets'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -135,6 +135,15 @@ router.post('/impresion/cobro/:id', autenticar, requerirRol('admin', 'cajero'), 
   await responder(res, 'caja', ticketCobro(c, req.body.abrirGaveta !== false))
 })
 
+// POST /api/impresion/precuenta/:id — cuenta para que el cliente revise (la pide el mozo; sale en la impresora de Caja)
+router.post('/impresion/precuenta/:id', autenticar, async (req: Request, res: Response): Promise<void> => {
+  const c = await comandaParaTicket(String(req.params.id))
+  if (!c || c.estado === 'cerrada' || c.estado === 'cancelada') { res.status(404).json({ error: 'La comanda ya no está abierta' }); return }
+  if (!c.items.some((i) => i.estado !== 'cancelado' && i.estado !== 'devuelto')) { res.status(400).json({ error: 'La comanda no tiene platos' }); return }
+  const promo = c.tipoDescuento ? await prisma.promocion.findUnique({ where: { id: c.tipoDescuento } }) : null
+  await responder(res, 'caja', ticketPrecuenta(c, promo))
+})
+
 // POST /api/impresion/cierre/:id — ticket de cierre de caja
 router.post('/impresion/cierre/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const s = await prisma.cajaSesion.findUnique({ where: { id: String(req.params.id) }, include: { movimientos: true } })
@@ -143,6 +152,19 @@ router.post('/impresion/cierre/:id', autenticar, requerirRol('admin', 'cajero'),
 })
 
 export default router
+
+// Al anular platos que la cocina no aceptó: aviso "NO PREPARAR" en las impresoras automáticas del área
+export function imprimirAnulacionAuto(
+  comanda: Parameters<typeof ticketAnulacion>[0],
+  items: (ItemTicket & { area: string })[],
+) {
+  for (const area of ['cocina', 'bar'] as const) {
+    const delArea = items.filter((i) => i.area === area)
+    if (delArea.length === 0) continue
+    imprimir(area, ticketAnulacion(comanda, delArea, area), { soloAutomaticas: true })
+      .catch((e) => console.error('[impresion] Error al imprimir anulación:', e))
+  }
+}
 
 // Llamado por las rutas de comandas al llegar un pedido o una adición: un ticket por área
 export function imprimirComandaAuto(

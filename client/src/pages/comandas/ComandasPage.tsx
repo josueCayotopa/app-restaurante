@@ -11,8 +11,10 @@ import type { Comanda, EstadoComanda } from '../../types'
 import { etiquetaComanda, insigniaComanda } from '../../lib/etiqueta'
 import {
   Clock, ClipboardList, CheckCircle, ChefHat, XCircle, CreditCard,
-  Plus, PlayCircle, StopCircle, Users, Tag, Loader2,
+  Plus, PlayCircle, StopCircle, Users, Tag, Loader2, Receipt,
 } from 'lucide-react'
+import { imprimirPrecuenta } from '../../lib/impresion'
+import { totalAPagar } from '../../components/caja/ModalCobro'
 
 // ── Config estados ───────────────────────────────────────────────────────────
 
@@ -85,14 +87,14 @@ function TarjetaComanda({
 
       {/* Ítems */}
       <div className="space-y-1">
-        {comanda.items.filter((i) => i.estado !== 'devuelto').slice(0, 3).map((item) => (
+        {comanda.items.filter((i) => i.estado !== 'devuelto' && i.estado !== 'cancelado').slice(0, 3).map((item) => (
           <div key={item.id} className="flex justify-between text-sm">
             <span className="text-gray-600 truncate">{item.cantidad}× {item.nombre}</span>
             <span className="text-gray-400 shrink-0 ml-2">S/ {(item.cantidad * item.precioUnitario).toFixed(2)}</span>
           </div>
         ))}
-        {comanda.items.filter((i) => i.estado !== 'devuelto').length > 3 && (
-          <p className="text-xs text-gray-400">+{comanda.items.filter((i) => i.estado !== 'devuelto').length - 3} más...</p>
+        {comanda.items.filter((i) => i.estado !== 'devuelto' && i.estado !== 'cancelado').length > 3 && (
+          <p className="text-xs text-gray-400">+{comanda.items.filter((i) => i.estado !== 'devuelto' && i.estado !== 'cancelado').length - 3} más...</p>
         )}
       </div>
 
@@ -110,19 +112,29 @@ function TarjetaComanda({
           )}
           {pendientes > 0 && <span className="px-1.5 py-0.5 bg-gray-500 text-white rounded font-semibold">{pendientes} pend.</span>}
           {listos > 0    && <span className="px-1.5 py-0.5 bg-gold-500 text-gray-900 rounded font-semibold">{listos} listo(s)</span>}
-          <span className="font-bold text-gold-700">S/ {comanda.total.toFixed(2)}</span>
+          <span className="font-bold text-gold-700">S/ {totalAPagar(comanda).toFixed(2)}</span>
         </div>
       </div>
 
-      {/* Botón agregar ítems */}
+      {/* Agregar / quitar ítems y precuenta */}
       {!cerrada && (
-        <button
-          onClick={onAgregarItems}
-          className="w-full flex items-center justify-center gap-1.5 py-2 border border-steel-200 bg-steel-50 text-steel-700 rounded-lg text-xs font-semibold hover:bg-steel-100 transition-colors"
-        >
-          <Plus size={13} />
-          Agregar ítems / cambiar plato
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onAgregarItems}
+            className="flex-[2] flex items-center justify-center gap-1.5 py-2 border border-steel-200 bg-steel-50 text-steel-700 rounded-lg text-xs font-semibold hover:bg-steel-100 transition-colors"
+          >
+            <Plus size={13} />
+            Agregar / quitar platos
+          </button>
+          <button
+            onClick={() => imprimirPrecuenta(comanda.id)}
+            title="Imprimir precuenta para el cliente"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors"
+          >
+            <Receipt size={13} />
+            Precuenta
+          </button>
+        </div>
       )}
     </div>
   )

@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore'
 import { useToastStore } from '../../store/toastStore'
 import { apiFetch, ApiError } from '../../lib/api'
 import { socket } from '../../lib/socket'
-import { imprimirCobro, METODO_LABEL } from '../../lib/impresion'
+import { imprimirCobro, imprimirPrecuenta, METODO_LABEL } from '../../lib/impresion'
 import type { Comanda } from '../../types'
 import {
   Plus, Phone, Clock, ShoppingBag, UtensilsCrossed, Banknote, PackageCheck, XCircle,
@@ -208,7 +208,13 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
             {!pagado && (
               <button onClick={onAgregar}
                 className="flex-1 flex items-center justify-center gap-1 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
-                <PlusCircle size={13} /> Agregar
+                <PlusCircle size={13} /> Agregar / quitar
+              </button>
+            )}
+            {!pagado && (
+              <button onClick={() => imprimirPrecuenta(pedido.id)}
+                className="flex-1 flex items-center justify-center gap-1 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                <Printer size={13} /> Precuenta
               </button>
             )}
             {pagado && puedeCobrar && (

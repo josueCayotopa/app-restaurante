@@ -18,8 +18,10 @@ import { useConexionStore } from '../../store/conexionStore'
 import { generarId } from '../../lib/id'
 import {
   X, Search, Plus, Minus, Trash2, Send, ChefHat, StickyNote,
-  UtensilsCrossed, RotateCcw, Tag, FileText, WifiOff, AlertTriangle,
+  UtensilsCrossed, RotateCcw, Tag, FileText, WifiOff, AlertTriangle, Receipt,
 } from 'lucide-react'
+import { imprimirPrecuenta } from '../../lib/impresion'
+import { ApiError } from '../../lib/api'
 
 // ── Constantes ───────────────────────────────────────────────────────────────
 
@@ -262,6 +264,10 @@ export default function NuevaComanda({
   const crearPedido        = useComandasStore((s) => s.crearPedido)
   const agregarItemsA      = useComandasStore((s) => s.agregarItemsAComanda)
   const devolverItem       = useComandasStore((s) => s.devolverItem)
+  const anularItem         = useComandasStore((s) => s.anularItem)
+  // Plato pendiente que se va a quitar (primer toque pide confirmar; el segundo lo quita)
+  const [porAnular, setPorAnular] = useState<string | null>(null)
+  const [anulando, setAnulando]   = useState<string | null>(null)
   const cambiarEstado      = useMesasStore((s) => s.cambiarEstado)
   const agregarToast       = useToastStore((s) => s.agregar)
   const turno              = useTurnoStore()
@@ -411,6 +417,22 @@ export default function NuevaComanda({
       agregarToast({ tipo: 'bar', titulo: `↩ Devolución — ${mesa}`, mensaje: `${modalDevolucion.cantidad}× ${modalDevolucion.nombre} ha sido devuelto`, duracion: 6000 })
     }
     setModalDevolucion(null)
+  }
+
+  // ── Quitar un plato que la cocina/bar aún no aceptó ──────────
+
+  const quitarEnviado = async (item: ItemComanda) => {
+    if (!comandaExistente || anulando) return
+    if (porAnular !== item.id) { setPorAnular(item.id); return }
+    setAnulando(item.id)
+    try {
+      await anularItem(comandaExistente.id, item.id)
+      agregarToast({ tipo: item.area === 'bar' ? 'bar' : 'cocina', titulo: `🗑 Quitado — ${etiqueta}`, mensaje: `${item.cantidad}× ${item.nombre}`, duracion: 4000 })
+    } catch (e) {
+      agregarToast({ tipo: 'error', titulo: 'No se pudo quitar', mensaje: e instanceof ApiError ? e.message : 'Sin conexión: intenta de nuevo', duracion: 6000 })
+    } finally {
+      setAnulando(null); setPorAnular(null)
+    }
   }
 
   // ── Enviar ───────────────────────────────────────────────────
@@ -601,6 +623,12 @@ export default function NuevaComanda({
               )}
             </div>
           </div>
+          {modoAgregar && comandaExistente && (
+            <button onClick={() => imprimirPrecuenta(comandaExistente.id)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 shrink-0">
+              <Receipt size={14} /> Precuenta
+            </button>
+          )}
           {totalItems > 0 && (
             <div className="text-right shrink-0">
               <p className="text-xs text-gray-400">{totalItems} ítem(s)</p>
@@ -723,6 +751,25 @@ export default function NuevaComanda({
                             {item.estado === 'pendiente' ? 'Pendiente' : item.estado === 'en_preparacion' ? 'Preparando' : item.estado === 'listo' ? 'Listo' : 'Servido'}
                           </span>
                         </div>
+                        {item.estado === 'pendiente' && !comandaExistente?.cobradaEn && (
+                          porAnular === item.id ? (
+                            <button
+                              onClick={() => quitarEnviado(item)}
+                              disabled={anulando === item.id}
+                              className="px-2 py-1 text-[11px] font-bold bg-rojo-500 text-white rounded-lg shrink-0 disabled:opacity-50"
+                            >
+                              {anulando === item.id ? '...' : '¿Quitar?'}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => quitarEnviado(item)}
+                              title="Quitar (la cocina aún no lo aceptó)"
+                              className="p-1 text-rojo-500 hover:bg-rojo-50 rounded-lg transition-colors shrink-0"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )
+                        )}
                         {esCambiable && (
                           <button
                             onClick={() => solicitarDevolucion(item)}
