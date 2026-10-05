@@ -4,7 +4,7 @@ import { useComandasStore } from '../store/comandasStore'
 import { useMesasStore } from '../store/mesasStore'
 import { useToastStore } from '../store/toastStore'
 import { reproducirAlerta } from '../lib/sound'
-import type { Comanda, ItemComanda, TipoPlato, EstadoComanda } from '../types'
+import type { Comanda, ItemComanda, TipoPlato, EstadoComanda, EstadoMesa } from '../types'
 import { etiquetaComanda } from '../lib/etiqueta'
 
 interface ItemResumen {
@@ -124,12 +124,16 @@ export function useSocketSync() {
       reproducirAlerta()
     }
 
+    const onMesaEstado = (mesa: { id: string; estado: EstadoMesa }) => useMesasStore.getState().aplicarEstadoRemoto(mesa.id, mesa.estado)
+
+    socket.on('mesa:estado_actualizado', onMesaEstado)
     socket.on('comanda:actualizada', onComandaActualizada)
     socket.on('comanda:item_actualizado', onItemActualizado)
     socket.on('comanda:items_agregados', onItemsAgregados)
     socket.on('comanda:item_devuelto', onItemDevuelto)
 
     return () => {
+      socket.off('mesa:estado_actualizado', onMesaEstado)
       socket.off('comanda:actualizada', onComandaActualizada)
       socket.off('comanda:item_actualizado', onItemActualizado)
       socket.off('comanda:items_agregados', onItemsAgregados)

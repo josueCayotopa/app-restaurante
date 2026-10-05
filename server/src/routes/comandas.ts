@@ -434,7 +434,11 @@ async function cerrarComanda(id: string, datos: Record<string, unknown>) {
     data: { ...datos, estado: 'cerrada', cobradaEn: new Date() },
     include: INCLUDE_COMPLETO,
   })
-  if (comanda.mesaId) await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'en_limpieza' } }).catch(() => {})
+  // Pagada la cuenta, la mesa queda libre al instante (todas las pantallas se enteran)
+  if (comanda.mesaId) {
+    const mesa = await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'libre' } }).catch(() => null)
+    if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+  }
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
   return mapeada

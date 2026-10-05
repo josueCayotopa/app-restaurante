@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar } from '../middleware/auth'
+import { getIo } from '../sockets/io'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -34,6 +35,7 @@ router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Pro
     where: { id: String(req.params.id) },
     data: { estado },
   })
+  getIo().emit('mesa:estado_actualizado', mesa)
   res.json(mesa)
 })
 

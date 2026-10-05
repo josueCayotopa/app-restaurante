@@ -10,6 +10,7 @@ interface MesasState {
   seleccionarMesa: (mesa: Mesa | null) => void
   cambiarEstado: (id: string, estado: EstadoMesa) => void
   actualizarMesas: (mesas: Mesa[]) => void
+  aplicarEstadoRemoto: (id: string, estado: EstadoMesa) => void
   crearMesa: (datos: { numero: number; capacidad: number; zona: Zona }) => Promise<void>
   eliminarMesa: (id: string) => void
   unirMesas: (principalId: string, secundariaId: string) => void
@@ -44,6 +45,12 @@ export const useMesasStore = create<MesasState>((set, get) => ({
   },
 
   actualizarMesas: (mesas) => set({ mesas }),
+
+  // Cambio hecho desde otro equipo (o al cobrar). Si la mesa se libera, se separan las que estaban unidas.
+  aplicarEstadoRemoto: (id, estado) => {
+    if (estado === 'libre' && get().mesas.find((m) => m.id === id)?.mesasUnidasIds?.length) get().separarMesa(id)
+    set((s) => ({ mesas: s.mesas.map((m) => (m.id === id ? { ...m, estado } : m)) }))
+  },
 
   crearMesa: async ({ numero, capacidad, zona }) => {
     const nueva = await apiFetch<Mesa>('/api/mesas', {
