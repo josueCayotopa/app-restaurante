@@ -15,10 +15,12 @@ import { socket } from '../../lib/socket'
 import {
   impresorasDeEsteEquipo, guardarImpresorasDeEsteEquipo, anchoLocal, guardarAnchoLocal, imprimirEnNavegador,
 } from '../../lib/impresion'
+import { TONOS, leerConfigSonido, guardarConfigSonido, reproducirAlerta, type ConfigSonido } from '../../lib/sound'
 import {
   ChefHat, Beer, Wallet, Printer, Plus, Pencil, Trash2,
   Wifi, Usb, X, CheckCircle2, AlertCircle, Send,
   ToggleLeft, ToggleRight, Sun, Moon, Monitor, Check, Loader2, Laptop, History, RotateCcw,
+  Volume2, VolumeX, Bell, Play,
 } from 'lucide-react'
 
 // ── SECCIÓN APARIENCIA ────────────────────────────────────────────────────────
@@ -146,6 +148,94 @@ function SeccionApariencia() {
               </button>
             )
           })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── SECCIÓN SONIDO (por equipo) ───────────────────────────────────────────────
+
+function SeccionSonido() {
+  const [cfg, setCfg] = useState<ConfigSonido>(leerConfigSonido)
+  const cambiar = (parcial: Partial<ConfigSonido>, probar = false) => {
+    const nueva = { ...cfg, ...parcial }
+    setCfg(nueva)
+    guardarConfigSonido(nueva)
+    if (probar) reproducirAlerta(nueva, true)
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
+      <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-gray-100 bg-gray-50">
+        <Volume2 size={16} className="text-gold-700" />
+        <span className="text-sm font-bold text-gray-700">Sonido de avisos</span>
+        <span className="ml-auto text-[11px] text-gray-400">Se guarda en este equipo</span>
+      </div>
+
+      <div className="p-5 space-y-5">
+        <Interruptor activo={cfg.activo} onClick={() => cambiar({ activo: !cfg.activo })}
+          label="Sonar al llegar pedidos y avisos"
+          desc="Pedidos nuevos, adiciones, platos listos, anulados y devoluciones" />
+
+        <div className={cfg.activo ? '' : 'opacity-50 pointer-events-none'}>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tono (tócalo para escucharlo)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {TONOS.map((t) => {
+              const activo = cfg.tono === t.valor
+              return (
+                <button key={t.valor} type="button" onClick={() => cambiar({ tono: t.valor }, true)}
+                  className={`flex items-start gap-3 text-left px-3 py-2.5 rounded-xl border-2 transition-colors ${activo ? 'border-gold-500 bg-gold-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                  <span className={`mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${activo ? 'bg-gold-500 text-black' : 'bg-gray-100 text-gray-500'}`}>
+                    <Bell size={14} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-bold ${activo ? 'text-gold-700' : 'text-gray-700'}`}>{t.label}</span>
+                    <span className="block text-xs text-gray-400 leading-snug">{t.desc}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Volumen</p>
+                <span className="text-sm font-bold text-gray-800">{cfg.volumen}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <VolumeX size={16} className="text-gray-400 shrink-0" />
+                <input type="range" min={10} max={100} step={5} value={cfg.volumen}
+                  onChange={(e) => cambiar({ volumen: Number(e.target.value) })}
+                  onPointerUp={() => reproducirAlerta({ ...cfg, repeticiones: 1 }, true)}
+                  className="flex-1 h-2 accent-gold-600 cursor-pointer" />
+                <Volume2 size={18} className="text-gray-700 shrink-0" />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Repetir el aviso</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[1, 2, 3].map((n) => (
+                  <button key={n} type="button" onClick={() => cambiar({ repeticiones: n }, true)}
+                    className={`py-2 rounded-lg text-sm font-semibold ${cfg.repeticiones === n ? 'bg-gold-500 text-gray-900' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {n === 1 ? '1 vez' : `${n} veces`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-5">
+            <button type="button" onClick={() => reproducirAlerta(cfg, true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 text-white rounded-xl text-sm font-semibold hover:bg-gray-900">
+              <Play size={15} /> Probar sonido
+            </button>
+            <p className="text-xs text-gray-400 leading-snug">
+              El 100 % es el máximo del navegador: si aún se oye bajo, sube también el volumen de Windows o de la tablet
+              (o conecta un parlante). Toca la pantalla una vez al encender el equipo para que el navegador permita sonar.
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -532,10 +622,11 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header titulo="Configuración" subtitulo="Apariencia, este equipo e impresoras" />
+      <Header titulo="Configuración" subtitulo="Apariencia, sonido, este equipo e impresoras" />
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <SeccionApariencia />
+        <SeccionSonido />
         <SeccionEsteEquipo />
 
         {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
