@@ -3,6 +3,7 @@ import { socket } from '../lib/socket'
 import { useComandasStore } from '../store/comandasStore'
 import { useMesasStore } from '../store/mesasStore'
 import { useToastStore } from '../store/toastStore'
+import { useAuthStore } from '../store/authStore'
 import { reproducirAlerta } from '../lib/sound'
 import type { Comanda, ItemComanda, TipoPlato, EstadoComanda, EstadoMesa } from '../types'
 import { etiquetaComanda } from '../lib/etiqueta'
@@ -44,16 +45,28 @@ function etiquetaDe(comandaId: string, numeroMesa?: number) {
   return numeroMesa ? ` — Mesa ${numeroMesa}` : ''
 }
 
-// En las pantallas de Cocina / Bar solo se avisa (toast y sonido) lo de su propia área
-function areaDePantalla(): 'cocina' | 'bar' | null {
+// Quién recibe cada aviso (toast + sonido), según el ROL del usuario:
+//  - Cocina (cocinero): solo lo de cocina — pedidos nuevos, adiciones, anulados y devoluciones
+//  - Bar (bartender): lo mismo pero de bebidas
+//  - Mozos y caja: solo "listo para servir" (lo que tienen que ir a recoger)
+//  - Admin: en la pantalla de Cocina o Bar se comporta como esa área; en las demás oye todo
+type Evento = 'pedido' | 'listo'
+function perfilAviso(): 'cocina' | 'bar' | 'salon' | 'todo' {
+  const rol = useAuthStore.getState().usuario?.rol
+  if (rol === 'cocinero') return 'cocina'
+  if (rol === 'bartender') return 'bar'
+  if (rol === 'mozo' || rol === 'cajero') return 'salon'
   const ruta = window.location.pathname
   if (ruta.startsWith('/cocina')) return 'cocina'
   if (ruta.startsWith('/bar')) return 'bar'
-  return null
+  return 'todo'
 }
-const esDeOtraArea = (area: string | undefined) => {
-  const pantalla = areaDePantalla()
-  return pantalla !== null && (area === 'bar' ? 'bar' : 'cocina') !== pantalla
+function debeAvisar(evento: Evento, area: string | undefined): boolean {
+  const perfil = perfilAviso()
+  const deArea = area === 'bar' ? 'bar' : 'cocina'
+  if (perfil === 'todo') return true
+  if (perfil === 'salon') return evento === 'listo'
+  return evento === 'pedido' && deArea === perfil
 }
 
 function formatearItem(i: ItemResumen): string {
@@ -77,8 +90,8 @@ export function useSocketSync() {
     const onItemActualizado = (data: ItemActualizadoPayload) => {
       aplicarItemRemoto(data.comandaId, data.item, data.comandaEstado)
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
-      if (esPropio || esDeOtraArea(data.item.area)) return
-      if (data.item.estado === 'listo') {
+      if (esPropio) return
+      if (data.item.estado === 'listo' && debeAvisar('listo', data.item.area)) {
         agregarToast({
           tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
           titulo: `✅ Listo para servir${etiquetaDe(data.comandaId, data.numeroMesa)}`,
@@ -87,7 +100,7 @@ export function useSocketSync() {
         })
         reproducirAlerta()
       }
-      if (data.item.estado === 'cancelado') {
+      if (data.item.estado === 'cancelado' && debeAvisar('pedido', data.item.area)) {
         agregarToast({
           tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
           titulo: `🗑 Anulado${etiquetaDe(data.comandaId, data.numeroMesa)}`,
@@ -103,7 +116,7 @@ export function useSocketSync() {
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
       if (esPropio) return
       const mesa = etiquetaComanda(data.comanda)
-      if (data.itemsCocina.length > 0 && !esDeOtraArea('cocina')) {
+      if (data.itemsCocina.length > 0 && debeAvisar('pedido', 'cocina')) {
         agregarToast({
           tipo: 'cocina',
           titulo: data.nuevo ? `🍽 Ticket nuevo — ${mesa}` : `🍽 Adición — ${mesa}`,
@@ -112,7 +125,7 @@ export function useSocketSync() {
         })
         reproducirAlerta()
       }
-      if (data.itemsBar.length > 0 && !esDeOtraArea('bar')) {
+      if (data.itemsBar.length > 0 && debeAvisar('pedido', 'bar')) {
         agregarToast({
           tipo: 'bar',
           titulo: data.nuevo ? `🍺 Ticket nuevo — ${mesa}` : `🍺 Adición — ${mesa}`,
@@ -126,7 +139,7 @@ export function useSocketSync() {
     const onItemDevuelto = (data: ItemDevueltoPayload) => {
       aplicarItemRemoto(data.comandaId, data.item)
       const esPropio = !!data.origenSocketId && data.origenSocketId === socket.id
-      if (esPropio || esDeOtraArea(data.item.area)) return
+      if (esPropio || !debeAvisar('pedido', data.item.area)) return
       agregarToast({
         tipo: data.item.area === 'bar' ? 'bar' : 'cocina',
         titulo: `↩ Devolución${etiquetaDe(data.comandaId, data.numeroMesa)}`,
