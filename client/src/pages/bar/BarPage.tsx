@@ -81,7 +81,7 @@ function ItemBar({
           {item.nombre}
         </p>
         {item.nota && (
-          <p className={`text-base leading-snug font-bold mt-1 px-2 py-1 rounded-lg ${activo ? 'bg-white/70 text-gray-900' : 'bg-rojo-50 text-rojo-700'}`}>⚠ {item.nota}</p>
+          <p className="text-base leading-snug font-bold mt-1 px-2 py-1 rounded-lg" style={activo ? { backgroundColor: '#111111', color: '#ffffff' } : { backgroundColor: '#cc2222', color: '#ffffff' }}>⚠ {item.nota}</p>
         )}
       </div>
       {siguiente && item.estado !== 'servido' && item.estado !== 'cancelado' && (
@@ -180,7 +180,7 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
 
       {/* Nota general de la comanda (bien visible) */}
       {comanda.notaGeneral && (
-        <div className="mx-3 mt-3 px-3 py-2 rounded-lg bg-amber-100 border border-amber-300 text-base font-bold text-gray-900 leading-snug">
+        <div className="mx-3 mt-3 px-3 py-2 rounded-lg text-base font-bold leading-snug" style={{ backgroundColor: '#111111', color: '#facc15', border: '2px solid #e8b400' }}>
           📋 {comanda.notaGeneral}
         </div>
       )}

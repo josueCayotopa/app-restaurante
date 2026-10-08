@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
 import { imprimir, obtenerHistorial, reintentar, invalidarImpresoras, type Area } from '../lib/impresion/servicio'
-import { ticketComanda, ticketCobro, ticketCierre, ticketPrueba, ticketPrecuenta, ticketAnulacion, type ItemTicket } from '../lib/impresion/tickets'
+import { ticketComanda, ticketCobro, ticketCierre, ticketPrueba, ticketPrecuenta, ticketAnulacion, etiquetaComanda, type ItemTicket } from '../lib/impresion/tickets'
+import { getIo } from '../sockets/io'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -141,7 +142,10 @@ router.post('/impresion/precuenta/:id', autenticar, async (req: Request, res: Re
   if (!c || c.estado === 'cerrada' || c.estado === 'cancelada') { res.status(404).json({ error: 'La comanda ya no está abierta' }); return }
   if (!c.items.some((i) => i.estado !== 'cancelado' && i.estado !== 'devuelto')) { res.status(400).json({ error: 'La comanda no tiene platos' }); return }
   const promo = c.tipoDescuento ? await prisma.promocion.findUnique({ where: { id: c.tipoDescuento } }) : null
-  await responder(res, 'caja', ticketPrecuenta(c, promo))
+  const doc = ticketPrecuenta(c, promo)
+  await responder(res, 'caja', doc)
+  // Aviso a Caja: esta cuenta ya está lista para cobrar
+  getIo().emit('comanda:cuenta_pedida', { comandaId: c.id, etiqueta: etiquetaComanda(c), titulo: doc.titulo, pidio: c.mozo })
 })
 
 // POST /api/impresion/cierre/:id — ticket de cierre de caja

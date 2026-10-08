@@ -48,25 +48,39 @@ function etiquetaDe(comandaId: string, numeroMesa?: number) {
 // Quién recibe cada aviso (toast + sonido), según el ROL del usuario:
 //  - Cocina (cocinero): solo lo de cocina — pedidos nuevos, adiciones, anulados y devoluciones
 //  - Bar (bartender): lo mismo pero de bebidas
-//  - Mozos y caja: solo "listo para servir" (lo que tienen que ir a recoger)
-//  - Admin: en la pantalla de Cocina o Bar se comporta como esa área; en las demás oye todo
-type Evento = 'pedido' | 'listo'
-function perfilAviso(): 'cocina' | 'bar' | 'salon' | 'todo' {
+//  - Mozos: solo "listo para servir" (lo que tienen que ir a recoger)
+//  - Caja: solo cuentas listas para cobrar (todos los platos listos, o el mozo pidió la precuenta)
+//  - Admin: en Cocina, Bar o Caja se comporta como esa área; en las demás pantallas oye todo
+type Evento = 'pedido' | 'listo' | 'cobrar'
+function perfilAviso(): 'cocina' | 'bar' | 'salon' | 'caja' | 'todo' {
   const rol = useAuthStore.getState().usuario?.rol
   if (rol === 'cocinero') return 'cocina'
   if (rol === 'bartender') return 'bar'
-  if (rol === 'mozo' || rol === 'cajero') return 'salon'
+  if (rol === 'mozo') return 'salon'
+  if (rol === 'cajero') return 'caja'
   const ruta = window.location.pathname
   if (ruta.startsWith('/cocina')) return 'cocina'
   if (ruta.startsWith('/bar')) return 'bar'
+  if (ruta.startsWith('/caja')) return 'caja'
   return 'todo'
 }
-function debeAvisar(evento: Evento, area: string | undefined): boolean {
+function debeAvisar(evento: Evento, area?: string): boolean {
   const perfil = perfilAviso()
   const deArea = area === 'bar' ? 'bar' : 'cocina'
   if (perfil === 'todo') return true
+  if (perfil === 'caja') return evento === 'cobrar'
   if (perfil === 'salon') return evento === 'listo'
   return evento === 'pedido' && deArea === perfil
+}
+
+// ¿Esta comanda ya tiene todo listo y falta cobrarla? (para avisar a Caja una sola vez:
+// se evalúa justo cuando el último plato pasa a "listo")
+function listaParaCobrar(comandaId: string) {
+  const c = useComandasStore.getState().comandas.find((x) => x.id === comandaId)
+  if (!c || c.cobradaEn || c.estado === 'cerrada' || c.estado === 'cancelada') return null
+  const activos = c.items.filter((i) => i.estado !== 'cancelado' && i.estado !== 'devuelto')
+  if (activos.length === 0 || !activos.every((i) => i.estado === 'listo' || i.estado === 'servido')) return null
+  return c
 }
 
 function formatearItem(i: ItemResumen): string {
@@ -99,6 +113,18 @@ export function useSocketSync() {
           duracion: 6000,
         })
         reproducirAlerta()
+      }
+      if (data.item.estado === 'listo' && debeAvisar('cobrar')) {
+        const c = listaParaCobrar(data.comandaId)
+        if (c) {
+          agregarToast({
+            tipo: 'success',
+            titulo: `💵 Lista para cobrar — ${etiquetaComanda(c)}`,
+            mensaje: 'Todos los platos y bebidas están listos',
+            duracion: 8000,
+          })
+          reproducirAlerta()
+        }
       }
       if (data.item.estado === 'cancelado' && debeAvisar('pedido', data.item.area)) {
         agregarToast({
@@ -149,9 +175,23 @@ export function useSocketSync() {
       reproducirAlerta()
     }
 
+    // El mozo imprimió la precuenta: el cliente pidió la cuenta
+    const onCuentaPedida = (data: { comandaId: string; etiqueta: string; titulo: string; pidio?: string }) => {
+      if (!debeAvisar('cobrar')) return
+      const total = data.titulo.split(' · ').pop() ?? ''
+      agregarToast({
+        tipo: 'success',
+        titulo: `🧾 Pidió la cuenta — ${data.etiqueta}`,
+        mensaje: `Precuenta ${total}${data.pidio ? ` · ${data.pidio}` : ''}`,
+        duracion: 10000,
+      })
+      reproducirAlerta()
+    }
+
     const onMesaEstado = (mesa: { id: string; estado: EstadoMesa }) => useMesasStore.getState().aplicarEstadoRemoto(mesa.id, mesa.estado)
 
     socket.on('mesa:estado_actualizado', onMesaEstado)
+    socket.on('comanda:cuenta_pedida', onCuentaPedida)
     socket.on('comanda:actualizada', onComandaActualizada)
     socket.on('comanda:item_actualizado', onItemActualizado)
     socket.on('comanda:items_agregados', onItemsAgregados)
@@ -159,6 +199,7 @@ export function useSocketSync() {
 
     return () => {
       socket.off('mesa:estado_actualizado', onMesaEstado)
+      socket.off('comanda:cuenta_pedida', onCuentaPedida)
       socket.off('comanda:actualizada', onComandaActualizada)
       socket.off('comanda:item_actualizado', onItemActualizado)
       socket.off('comanda:items_agregados', onItemsAgregados)
