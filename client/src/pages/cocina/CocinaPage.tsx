@@ -308,7 +308,8 @@ export default function CocinaPage() {
   const comandas = useComandasStore((s) => s.comandas)
 
   const itemsCocina = (c: Comanda) => c.items.filter((i) => i.area === 'cocina' || !i.area)
-  const comandasActivas = comandas.filter((c) => c.estado !== 'cerrada' && c.estado !== 'cancelada')
+  // Las canceladas siguen aquí mientras tengan platos devueltos sin aceptar
+  const comandasActivas = comandas.filter((c) => c.estado !== 'cerrada' && (c.estado !== 'cancelada' || c.items.some((i) => i.estado === 'devuelto')))
 
   const gruposNuevas       = agruparPorColumna(comandasActivas, itemsCocina, ['pendiente'])
   const gruposPreparacion  = agruparPorColumna(comandasActivas, itemsCocina, ['en_preparacion'])

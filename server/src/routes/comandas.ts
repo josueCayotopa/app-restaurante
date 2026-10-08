@@ -102,7 +102,13 @@ router.get('/', autenticar, async (req: Request, res: Response) => {
 // ── GET /api/comandas/activas ────────────────────────────────────────────────
 router.get('/activas', autenticar, async (_req: Request, res: Response) => {
   const comandas = await prisma.comanda.findMany({
-    where: { estado: { notIn: ['cerrada', 'cancelada'] } },
+    where: {
+      OR: [
+        { estado: { notIn: ['cerrada', 'cancelada'] } },
+        // Canceladas con platos devueltos que Cocina/Bar aún no aceptan (siguen en su pantalla)
+        { estado: 'cancelada', items: { some: { estado: 'devuelto' } } },
+      ],
+    },
     include: { items: true, cuentas: INCLUDE_CUENTAS },
     orderBy: { creadaEn: 'asc' },
   })
@@ -679,10 +685,14 @@ router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero', 'mozo'),
   }
   const origen = esPedidoTel ? `Pedido #${c.numero}` : `Mesa ${c.numeroMesa}`
 
-  // Platos aún no entregados: se anulan (los servidos quedan como historial de lo que se consumió)
+  // Platos aún no entregados (los servidos quedan como historial de lo que se consumió):
+  //  - pendientes (la cocina no los empezó) → se anulan
+  //  - en preparación o listos → DEVOLUCIÓN: Cocina/Bar deben aceptarla para retirarlos de su pantalla
   const porAnular = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: ['pendiente', 'en_preparacion', 'listo'] } } })
   const pendientes = porAnular.filter((it) => SIN_PREPARAR.includes(it.estado))
-  if (porAnular.length) await prisma.itemComanda.updateMany({ where: { id: { in: porAnular.map((it) => it.id) } }, data: { estado: 'cancelado' } })
+  const preparados = porAnular.filter((it) => !SIN_PREPARAR.includes(it.estado))
+  if (pendientes.length) await prisma.itemComanda.updateMany({ where: { id: { in: pendientes.map((it) => it.id) } }, data: { estado: 'cancelado' } })
+  if (preparados.length) await prisma.itemComanda.updateMany({ where: { id: { in: preparados.map((it) => it.id) } }, data: { estado: 'devuelto' } })
   // Lo que la cocina no empezó vuelve al inventario
   const porId = new Map(pendientes.map((it) => [it.id, it]))
   enSegundoPlano(devolverVenta(pendientes.map((it) => it.id), (itemId) => {
@@ -698,19 +708,25 @@ router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero', 'mozo'),
     if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
   }
   const mapeada = mapComanda(cancelado as never)
-  // Cocina/Bar: aviso por cada plato anulado y ticket "NO PREPARAR" si el ticket ya salió impreso
+  // La comanda primero (las pantallas la necesitan para mostrar las devoluciones aunque esté cancelada)
+  getIo().emit('comanda:actualizada', mapeada)
+  // Cocina/Bar: aviso de anulado (pendientes) o de devolución por aceptar (ya preparados)
   const itemsMapeados = (mapeada.items ?? []) as unknown as { id: string; estado: string; area: string }[]
   for (const it of itemsMapeados) {
-    if (!porAnular.some((x) => x.id === it.id)) continue
-    getIo().emit('comanda:item_actualizado', { comandaId: id, numeroMesa: c.numeroMesa, item: it, origenSocketId: req.body?.socketId })
+    if (pendientes.some((x) => x.id === it.id)) {
+      getIo().emit('comanda:item_actualizado', { comandaId: id, numeroMesa: c.numeroMesa, item: it, origenSocketId: req.body?.socketId })
+    } else if (preparados.some((x) => x.id === it.id)) {
+      getIo().emit('comanda:item_devuelto', { comandaId: id, numeroMesa: c.numeroMesa, item: it, origenSocketId: req.body?.socketId })
+    }
   }
-  if (porAnular.length) {
+  // Ticket "NO PREPARAR" para lo que aún no estaba listo (pendiente o cocinándose)
+  const noPreparar = porAnular.filter((it) => it.estado !== 'listo')
+  if (noPreparar.length) {
     imprimirAnulacionAuto(
       { ...cancelado, mesasUnidas: cancelado.mesasUnidas ? JSON.parse(cancelado.mesasUnidas) : null, items: [] } as never,
-      itemsMapeados.filter((it) => porAnular.some((x) => x.id === it.id)) as never,
+      itemsMapeados.filter((it) => noPreparar.some((x) => x.id === it.id)) as never,
     )
   }
-  getIo().emit('comanda:actualizada', mapeada)
   res.json({ ...mapeada, reembolso: c.cobradaEn ? c.totalCobrado : 0 })
 })
 

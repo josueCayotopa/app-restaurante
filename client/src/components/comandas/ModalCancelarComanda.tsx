@@ -63,7 +63,7 @@ export default function ModalCancelarComanda({ comanda, onCerrar, onCancelada }:
         )}
         {enCocina.length > 0 && (
           <p className="text-sm bg-gold-50 border border-gold-200 text-gray-700 rounded-lg px-3 py-2">
-            {enCocina.length} plato(s) ya se están preparando o están listos: se avisará a Cocina/Bar que <b>no los preparen</b>.
+            {enCocina.length} plato(s) ya se están preparando o están listos: pasan a <b>devolución</b> y Cocina/Bar deben aceptarla en su pantalla.
           </p>
         )}
         {servidos.length > 0 && (

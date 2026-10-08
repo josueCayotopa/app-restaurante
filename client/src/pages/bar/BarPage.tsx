@@ -256,7 +256,8 @@ export default function BarPage() {
   const comandas = useComandasStore((s) => s.comandas)
 
   const itemsBar = (c: Comanda) => c.items.filter((i) => i.area === 'bar')
-  const comandasActivas = comandas.filter((c) => c.estado !== 'cerrada' && c.estado !== 'cancelada')
+  // Las canceladas siguen aquí mientras tengan platos devueltos sin aceptar
+  const comandasActivas = comandas.filter((c) => c.estado !== 'cerrada' && (c.estado !== 'cancelada' || c.items.some((i) => i.estado === 'devuelto')))
 
   const gruposNuevas      = agruparPorColumna(comandasActivas, itemsBar, ['pendiente'])
   const gruposPreparacion = agruparPorColumna(comandasActivas, itemsBar, ['en_preparacion'])
