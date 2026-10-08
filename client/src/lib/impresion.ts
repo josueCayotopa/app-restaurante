@@ -110,15 +110,6 @@ async function pedir(ruta: string, body: Record<string, unknown> = {}) {
 export const imprimirCobro = (comandaId: string, opciones: { abrirGaveta?: boolean } = {}) =>
   pedir(`/api/impresion/cobro/${comandaId}`, { abrirGaveta: opciones.abrirGaveta ?? true })
 export const imprimirCierre = (sesionId: string) => pedir(`/api/impresion/cierre/${sesionId}`)
-// Precuenta para el cliente: sale en la impresora de Caja (o en este equipo si Caja no tiene)
-export async function imprimirPrecuenta(comandaId: string) {
-  try {
-    const destino = await pedir(`/api/impresion/precuenta/${comandaId}`)
-    if (destino === 'impresora') useToastStore.getState().agregar({ tipo: 'info', titulo: '🧾 Precuenta enviada', mensaje: 'Sale en la impresora de Caja', duracion: 3500 })
-  } catch (e) {
-    useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se pudo imprimir la precuenta', mensaje: e instanceof Error ? e.message : 'Error de impresión', duracion: 6000 })
-  }
-}
 export const reimprimirComanda = (comandaId: string, area: 'cocina' | 'bar', itemIds?: string[]) =>
   pedir(`/api/impresion/comanda/${comandaId}`, { area, itemIds })
 
