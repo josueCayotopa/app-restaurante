@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Header from '../../components/layout/Header'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
+import ModalCancelarComanda from '../../components/comandas/ModalCancelarComanda'
 import ModalCobro, { soles, itemsCobrables, totalAPagar } from '../../components/caja/ModalCobro'
 import { useComandasStore } from '../../store/comandasStore'
 import { useCajaStore } from '../../store/cajaStore'
@@ -13,7 +14,7 @@ import { MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 import type { Comanda } from '../../types'
 import {
   Plus, Phone, Clock, ShoppingBag, UtensilsCrossed, Banknote, PackageCheck, XCircle,
-  Printer, Loader2, X, ChefHat, CheckCircle, PlusCircle,
+  Printer, Loader2, ChefHat, CheckCircle, PlusCircle,
 } from 'lucide-react'
 
 // ── Estado de un pedido ──────────────────────────────────────────────────────
@@ -37,72 +38,6 @@ const errorDe = (e: unknown) => (e instanceof ApiError ? e.message : 'Sin conexi
 
 function inicioDeHoy() {
   const d = new Date(); d.setHours(0, 0, 0, 0); return d
-}
-
-// ── Modal de cancelación ─────────────────────────────────────────────────────
-
-function ModalCancelar({ pedido, onCerrar }: { pedido: Comanda; onCerrar: () => void }) {
-  const cancelarPedido = useComandasStore((s) => s.cancelarPedido)
-  const [motivo, setMotivo] = useState('')
-  const [enviando, setEnviando] = useState(false)
-  const [error, setError] = useState('')
-  const pagado = !!pedido.cobradaEn
-
-  const confirmar = async () => {
-    if (!motivo.trim() || enviando) return
-    setEnviando(true); setError('')
-    try {
-      const r = await cancelarPedido(pedido.id, motivo.trim())
-      useToastStore.getState().agregar({
-        tipo: 'info',
-        titulo: `Pedido #${pedido.numero} cancelado`,
-        mensaje: r.reembolso > 0 ? `Devuelve ${soles(r.reembolso)} al cliente (${METODO_LABEL[pedido.metodoPago ?? ''] ?? 'pago'})` : 'No se había cobrado nada',
-        duracion: 9000,
-      })
-      onCerrar()
-    } catch (e) {
-      setError(errorDe(e))
-    } finally {
-      setEnviando(false)
-    }
-  }
-
-  const motivosRapidos = ['El cliente canceló', 'No vino a recoger', 'Error al registrar', 'Sin stock']
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-gray-800">Cancelar pedido #{pedido.numero} · {pedido.clienteNombre}</h2>
-          <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400"><X size={18} /></button>
-        </div>
-        {pagado && (
-          <p className="text-sm bg-rojo-50 border border-rojo-200 text-rojo-700 rounded-lg px-3 py-2">
-            Este pedido ya se cobró: al cancelarlo hay que <b>devolver {soles(pedido.totalCobrado ?? 0)}</b> al cliente
-            y deja de contar en las ventas y en el arqueo de caja.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {motivosRapidos.map((m) => (
-            <button key={m} onClick={() => setMotivo(m)}
-              className={`px-2.5 py-1.5 rounded-full text-xs font-semibold ${motivo === m ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-              {m}
-            </button>
-          ))}
-        </div>
-        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo de la cancelación *" autoFocus
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500" />
-        {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
-        <div className="flex gap-3">
-          <button onClick={onCerrar} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Volver</button>
-          <button onClick={confirmar} disabled={!motivo.trim() || enviando}
-            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-rojo-500 text-white rounded-xl text-sm font-bold hover:bg-rojo-600 disabled:opacity-50">
-            {enviando && <Loader2 size={15} className="animate-spin" />} Cancelar pedido
-          </button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 // ── Tarjeta de pedido ────────────────────────────────────────────────────────
@@ -366,7 +301,7 @@ export default function PedidosPage() {
       {pedidoACobrar && (
         <ModalCobro comanda={pedidoACobrar} onCobrado={cargarHoy} onCerrar={() => setACobrar(null)} />
       )}
-      {aCancelar && <ModalCancelar pedido={aCancelar} onCerrar={() => { setACancelar(null); cargarHoy() }} />}
+      {aCancelar && <ModalCancelarComanda comanda={aCancelar} onCerrar={() => { setACancelar(null); cargarHoy() }} />}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Header from '../../components/layout/Header'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
+import ModalCancelarComanda from '../../components/comandas/ModalCancelarComanda'
 import { useComandasStore } from '../../store/comandasStore'
 import { useTurnoStore } from '../../store/turnoStore'
 import { useAuthStore } from '../../store/authStore'
@@ -50,6 +51,7 @@ function TarjetaComanda({
   const devueltos = comanda.items.filter((i) => i.estado === 'devuelto').length
   const cerrada   = comanda.estado === 'cerrada' || comanda.estado === 'cancelada'
   const promo     = useCartaPublicaStore((s) => s.promociones.find((p) => p.id === comanda.tipoDescuento))
+  const [cancelar, setCancelar] = useState(false)
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow flex flex-col gap-3">
@@ -134,8 +136,16 @@ function TarjetaComanda({
             <Receipt size={13} />
             Precuenta
           </button>
+          <button
+            onClick={() => setCancelar(true)}
+            title="Cancelar la comanda (el cliente canceló o se devolvió todo)"
+            className="px-2.5 flex items-center justify-center border border-rojo-200 text-rojo-600 rounded-lg hover:bg-rojo-50 transition-colors"
+          >
+            <XCircle size={15} />
+          </button>
         </div>
       )}
+      {cancelar && <ModalCancelarComanda comanda={comanda} onCerrar={() => setCancelar(false)} />}
     </div>
   )
 }

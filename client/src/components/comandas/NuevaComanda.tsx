@@ -18,9 +18,10 @@ import { useConexionStore } from '../../store/conexionStore'
 import { generarId } from '../../lib/id'
 import {
   X, Search, Plus, Minus, Trash2, Send, ChefHat, StickyNote,
-  UtensilsCrossed, RotateCcw, Tag, FileText, WifiOff, AlertTriangle, Receipt,
+  UtensilsCrossed, RotateCcw, Tag, FileText, WifiOff, AlertTriangle, Receipt, XCircle,
 } from 'lucide-react'
 import { imprimirPrecuenta } from '../../lib/impresion'
+import ModalCancelarComanda from './ModalCancelarComanda'
 import { ApiError } from '../../lib/api'
 
 // ── Constantes ───────────────────────────────────────────────────────────────
@@ -265,6 +266,7 @@ export default function NuevaComanda({
   const anularItem         = useComandasStore((s) => s.anularItem)
   // Plato pendiente que se va a quitar (primer toque pide confirmar; el segundo lo quita)
   const [porAnular, setPorAnular] = useState<string | null>(null)
+  const [cancelarTodo, setCancelarTodo] = useState(false)
   const [anulando, setAnulando]   = useState<string | null>(null)
   const cambiarEstado      = useMesasStore((s) => s.cambiarEstado)
   const agregarToast       = useToastStore((s) => s.agregar)
@@ -622,6 +624,12 @@ export default function NuevaComanda({
               )}
             </div>
           </div>
+          {modoAgregar && comandaExistente && !comandaExistente.cobradaEn && (!esPedidoTel || !esMozo) && (
+            <button onClick={() => setCancelarTodo(true)} title="El cliente canceló o se devolvió todo"
+              className="flex items-center gap-1.5 px-3 py-2 border border-rojo-200 rounded-lg text-xs font-semibold text-rojo-600 hover:bg-rojo-50 shrink-0">
+              <XCircle size={14} /> <span className="hidden sm:inline">Cancelar comanda</span>
+            </button>
+          )}
           {modoAgregar && comandaExistente && (
             <button onClick={() => imprimirPrecuenta(comandaExistente.id)}
               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 shrink-0">
@@ -653,6 +661,18 @@ export default function NuevaComanda({
           <div className="bg-rojo-500 px-4 py-2 flex items-center gap-2 shrink-0">
             <AlertTriangle size={14} className="text-white shrink-0" />
             <p className="text-xs text-white font-semibold">No estás en el turno de hoy — pide al administrador que te agregue</p>
+          </div>
+        )}
+
+        {/* Ya no quedan platos (se quitaron o devolvieron todos): cerrar la comanda y liberar la mesa */}
+        {modoAgregar && comandaExistente && itemsExistentes.length === 0 && pedido.size === 0 && (
+          <div className="bg-rojo-500 px-4 py-2.5 flex items-center gap-3 shrink-0">
+            <AlertTriangle size={16} className="text-white shrink-0" />
+            <p className="text-sm text-white font-semibold flex-1">Esta comanda ya no tiene platos.</p>
+            <button onClick={() => setCancelarTodo(true)}
+              className="px-3 py-1.5 bg-white text-rojo-600 rounded-lg text-xs font-bold hover:bg-rojo-50 shrink-0">
+              Cancelar comanda{esPedidoTel ? '' : ' y liberar mesa'}
+            </button>
           </div>
         )}
 
@@ -1005,6 +1025,9 @@ export default function NuevaComanda({
         </div>
       </div>
 
+      {cancelarTodo && comandaExistente && (
+        <ModalCancelarComanda comanda={comandaExistente} onCerrar={() => setCancelarTodo(false)} onCancelada={onCerrar} />
+      )}
       {modalGuarnicion && (
         <ModalGuarnicion
           producto={modalGuarnicion}

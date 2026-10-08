@@ -656,29 +656,60 @@ router.post('/:id/entregar', autenticar, requerirRol(...ROLES_PEDIDOS), async (r
   res.json(mapeada)
 })
 
-// POST /api/comandas/:id/cancelar { motivo } → si estaba pagado, se devuelve el dinero
-// (el cobro deja de contar en ventas y en el arqueo de caja)
-router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
+// POST /api/comandas/:id/cancelar { motivo } → cancela la comanda entera (mesa o pedido).
+// - Lo que la cocina/bar aún no entregó se anula (aviso + ticket "NO PREPARAR"); lo no empezado vuelve al inventario
+// - Mesa: queda libre. Pedido pagado: se devuelve el dinero (deja de contar en ventas y en el arqueo)
+// - Mesas: también el mozo (el cliente se fue, se equivocaron de mesa…). Pedidos: solo admin y caja.
+router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero', 'mozo'), async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id)
   const motivo = typeof req.body?.motivo === 'string' ? req.body.motivo.trim() : ''
-  const c = await prisma.comanda.findUnique({ where: { id } })
-  if (!c || c.tipo !== 'pedido') { res.status(404).json({ error: 'Pedido no encontrado' }); return }
-  if (c.estado === 'cerrada') { res.status(409).json({ error: 'El pedido ya se entregó: no se puede cancelar' }); return }
+  const c = await prisma.comanda.findUnique({ where: { id }, include: { cuentas: true } })
+  if (!c) { res.status(404).json({ error: 'Comanda no encontrada' }); return }
+  const esPedidoTel = c.tipo === 'pedido'
+  if (esPedidoTel && req.usuario?.rol === 'mozo') { res.status(403).json({ error: 'Solo Caja o el administrador cancelan pedidos' }); return }
+  if (c.estado === 'cerrada') {
+    res.status(409).json({ error: esPedidoTel ? 'El pedido ya se entregó: no se puede cancelar' : 'La cuenta ya se cobró: no se puede cancelar' })
+    return
+  }
   if (c.estado === 'cancelada') { res.json(mapComanda((await prisma.comanda.findUnique({ where: { id }, include: INCLUDE_COMPLETO })) as never)); return }
   if (!motivo) { res.status(400).json({ error: 'Indica el motivo de la cancelación' }); return }
+  if (!esPedidoTel && c.cuentas.some((ct) => ct.estado === 'pagada')) {
+    res.status(409).json({ error: 'Ya hay cuentas pagadas en esta mesa: cobra el resto en Caja' })
+    return
+  }
+  const origen = esPedidoTel ? `Pedido #${c.numero}` : `Mesa ${c.numeroMesa}`
 
+  // Platos aún no entregados: se anulan (los servidos quedan como historial de lo que se consumió)
+  const porAnular = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: ['pendiente', 'en_preparacion', 'listo'] } } })
+  const pendientes = porAnular.filter((it) => SIN_PREPARAR.includes(it.estado))
+  if (porAnular.length) await prisma.itemComanda.updateMany({ where: { id: { in: porAnular.map((it) => it.id) } }, data: { estado: 'cancelado' } })
   // Lo que la cocina no empezó vuelve al inventario
-  const pendientes = await prisma.itemComanda.findMany({ where: { comandaId: id, estado: { in: SIN_PREPARAR } } })
   const porId = new Map(pendientes.map((it) => [it.id, it]))
   enSegundoPlano(devolverVenta(pendientes.map((it) => it.id), (itemId) => {
     const it = porId.get(itemId)!
-    return `Pedido #${c.numero} cancelado · ${it.cantidad}× ${it.nombre}`
-  }), 'devolver pedido cancelado')
+    return `${origen} cancelado · ${it.cantidad}× ${it.nombre}`
+  }), 'devolver comanda cancelada')
 
   const cancelado = await prisma.comanda.update({
     where: { id }, data: { estado: 'cancelada', motivoCancelacion: motivo }, include: INCLUDE_COMPLETO,
   })
+  if (c.mesaId) {
+    const mesa = await prisma.mesa.update({ where: { id: c.mesaId }, data: { estado: 'libre' } }).catch(() => null)
+    if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+  }
   const mapeada = mapComanda(cancelado as never)
+  // Cocina/Bar: aviso por cada plato anulado y ticket "NO PREPARAR" si el ticket ya salió impreso
+  const itemsMapeados = (mapeada.items ?? []) as unknown as { id: string; estado: string; area: string }[]
+  for (const it of itemsMapeados) {
+    if (!porAnular.some((x) => x.id === it.id)) continue
+    getIo().emit('comanda:item_actualizado', { comandaId: id, numeroMesa: c.numeroMesa, item: it, origenSocketId: req.body?.socketId })
+  }
+  if (porAnular.length) {
+    imprimirAnulacionAuto(
+      { ...cancelado, mesasUnidas: cancelado.mesasUnidas ? JSON.parse(cancelado.mesasUnidas) : null, items: [] } as never,
+      itemsMapeados.filter((it) => porAnular.some((x) => x.id === it.id)) as never,
+    )
+  }
   getIo().emit('comanda:actualizada', mapeada)
   res.json({ ...mapeada, reembolso: c.cobradaEn ? c.totalCobrado : 0 })
 })

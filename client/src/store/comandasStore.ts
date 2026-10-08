@@ -103,7 +103,7 @@ interface ComandasState {
   agregarComanda:         (comanda: Comanda) => Promise<ResultadoEnvio>
   crearPedido:            (pedido: Comanda) => Promise<ResultadoEnvio>
   entregarPedido:         (id: string) => Promise<Comanda>
-  cancelarPedido:         (id: string, motivo: string) => Promise<Comanda & { reembolso: number }>
+  cancelarComanda:        (id: string, motivo: string) => Promise<Comanda & { reembolso: number }>
   actualizarEstadoItem:   (comandaId: string, itemId: string, estado: EstadoItem) => void
   actualizarEstadoComanda:(comandaId: string, estado: EstadoComanda) => void
   agregarItem:            (comandaId: string, item: ItemComanda) => void
@@ -236,7 +236,8 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
     return comanda
   },
 
-  cancelarPedido: async (id, motivo) => {
+  // Mesa o pedido: anula lo pendiente en Cocina/Bar y libera la mesa (el servidor valida)
+  cancelarComanda: async (id, motivo) => {
     const comanda = await apiFetch<Comanda & { reembolso: number }>(`/api/comandas/${id}/cancelar`, { method: 'POST', body: JSON.stringify({ motivo }) })
     get().aplicarComandaRemota(comanda)
     return comanda

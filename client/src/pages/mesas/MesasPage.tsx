@@ -5,10 +5,11 @@ import { useAuthStore } from '../../store/authStore'
 import { useComandasStore } from '../../store/comandasStore'
 import { useZonasStore } from '../../store/zonasStore'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
+import ModalCancelarComanda from '../../components/comandas/ModalCancelarComanda'
 import type { Mesa, EstadoMesa, Zona } from '../../types'
 import {
   Users, Plus, ClipboardList, X, CheckCircle, AlertCircle,
-  BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt,
+  BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt, XCircle,
 } from 'lucide-react'
 import { imprimirPrecuenta } from '../../lib/impresion'
 import { totalAPagar } from '../../components/caja/ModalCobro'
@@ -306,6 +307,7 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
   const comanda = getComandaByMesa(mesa.id)
   const [nuevaComandaAbierta, setNuevaComandaAbierta] = useState(false)
   const [editarComanda, setEditarComanda] = useState(false)
+  const [cancelarComanda, setCancelarComanda] = useState(false)
 
   const transiciones = (['libre', 'ocupada', 'reservada', 'esperando_pago'] as EstadoMesa[])
     .filter((e) => e !== mesa.estado && e !== 'unida')
@@ -408,6 +410,10 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
                 <Receipt size={15} /> Precuenta
               </button>
             </div>
+            <button onClick={() => setCancelarComanda(true)}
+              className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-rojo-200 text-rojo-600 text-sm font-medium hover:bg-rojo-50 transition-colors">
+              <XCircle size={15} /> Cancelar comanda
+            </button>
           </div>
         ) : (
           <div className="text-center py-6 text-gray-400">
@@ -452,6 +458,9 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
         </div>
       )}
 
+      {cancelarComanda && comanda && (
+        <ModalCancelarComanda comanda={comanda} onCerrar={() => setCancelarComanda(false)} />
+      )}
       {editarComanda && comanda && (
         <NuevaComanda
           mesaId={comanda.mesaId}
