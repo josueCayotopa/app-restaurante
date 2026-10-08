@@ -273,7 +273,7 @@ function ModalFilaCarta({
       }
       // Tamaños quitados: salen de la carta pero el producto sigue en Productos
       const quitados = (fila?.productos ?? []).filter((p) => !conPrecio.some((v) => v.id === p.id))
-      for (const p of quitados) await actualizarProducto(p.id, { seccionCarta: null })
+      await Promise.all(quitados.map((p) => actualizarProducto(p.id, { seccionCarta: null })))
       onCerrar()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo guardar')
@@ -551,7 +551,8 @@ export default function CartaPublicaPage() {
     ? async (fila: FilaCarta) => {
         if (!confirm(`¿Quitar "${fila.nombre}" de la carta?\n\nEl producto sigue existiendo en Productos (para borrarlo del todo, hazlo desde allí).`)) return
         try {
-          for (const p of fila.productos) await actualizarProducto(p.id, { seccionCarta: null })
+          // Todos a la vez y al instante en pantalla (antes esperaba al servidor uno por uno)
+          await Promise.all(fila.productos.map((p) => actualizarProducto(p.id, { seccionCarta: null })))
         } catch (e) {
           alert(e instanceof ApiError ? e.message : 'No se pudo quitar')
         }

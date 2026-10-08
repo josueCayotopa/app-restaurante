@@ -48,17 +48,35 @@ export const useCartaStore = create<CartaState>((set, get) => ({
     set((s) => ({ productos: [...s.productos, creado] }))
   },
 
+  // Optimista: la pantalla cambia al instante y, si el servidor lo rechaza, vuelve atrás
   actualizarProducto: async (id, datos) => {
-    const actualizado = await apiFetch<Producto>(`/api/productos/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(datos),
-    })
-    set((s) => ({ productos: s.productos.map((p) => (p.id === id ? actualizado : p)) }))
+    const antes = get().productos.find((p) => p.id === id)
+    set((s) => ({ productos: s.productos.map((p) => (p.id === id ? { ...p, ...datos } : p)) }))
+    try {
+      const actualizado = await apiFetch<Producto>(`/api/productos/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(datos),
+      })
+      set((s) => ({ productos: s.productos.map((p) => (p.id === id ? actualizado : p)) }))
+    } catch (e) {
+      if (antes) set((s) => ({ productos: s.productos.map((p) => (p.id === id ? antes : p)) }))
+      throw e
+    }
   },
 
   eliminarProducto: async (id) => {
-    await apiFetch(`/api/productos/${id}`, { method: 'DELETE' })
-    set((s) => ({ productos: s.productos.filter((p) => p.id !== id) }))
+    const lista = get().productos
+    const idx = lista.findIndex((p) => p.id === id)
+    set({ productos: lista.filter((p) => p.id !== id) })
+    try {
+      await apiFetch(`/api/productos/${id}`, { method: 'DELETE' })
+    } catch (e) {
+      // El servidor no lo borró: vuelve a aparecer en su lugar
+      if (idx >= 0 && !get().productos.some((p) => p.id === id)) {
+        set((s) => { const n = [...s.productos]; n.splice(idx, 0, lista[idx]); return { productos: n } })
+      }
+      throw e
+    }
   },
 
   getByCategoria: (categoria) =>

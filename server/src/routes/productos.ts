@@ -82,7 +82,16 @@ router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cajero', '
 
 // DELETE /api/productos/:id
 router.delete('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
-  await prisma.producto.delete({ where: { id: String(req.params.id) } })
+  try {
+    await prisma.producto.delete({ where: { id: String(req.params.id) } })
+  } catch (e) {
+    // Ya se vendió (está en comandas): borrarlo rompería el historial de ventas
+    if ((e as { code?: string }).code === 'P2003') {
+      res.status(409).json({ error: 'Este producto ya tiene ventas registradas: no se puede eliminar. Márcalo como "No disponible" o quítalo de la carta.' })
+      return
+    }
+    throw e
+  }
   res.status(204).send()
 })
 
