@@ -9,7 +9,7 @@ import { imprimirCobro, imprimirPrecuenta, METODO_LABEL } from '../../lib/impres
 import { useToastStore } from '../../store/toastStore'
 import { apiFetch } from '../../lib/api'
 import { socket } from '../../lib/socket'
-import { etiquetaComanda, insigniaComanda, esPedido } from '../../lib/etiqueta'
+import { etiquetaComanda, insigniaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 import type { Comanda } from '../../types'
 import { CreditCard, Banknote, Receipt, CheckCircle, ChevronRight, Printer, Scissors, Wallet } from 'lucide-react'
 
@@ -40,7 +40,7 @@ function TarjetaCobro({ comanda, cajaAbierta, onCobrar, onDividir }: { comanda: 
           <div>
             <p className="font-bold text-gray-800 text-sm">{etiquetaComanda(comanda)}</p>
             <p className="text-xs text-gray-400">
-              {esPedido(comanda) ? (comanda.paraLlevar ? 'Para llevar' : 'Comer aquí') : comanda.mozo} · {tiempoMin} min
+              {esPedido(comanda) ? MODALIDADES[modalidadDe(comanda)].label : comanda.mozo} · {tiempoMin} min
             </p>
           </div>
         </div>

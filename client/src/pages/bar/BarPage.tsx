@@ -6,7 +6,7 @@ import { reimprimirComanda } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import type { Comanda, ItemComanda, EstadoItem } from '../../types'
 import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer } from 'lucide-react'
-import { etiquetaComanda, insigniaComanda, esPedido } from '../../lib/etiqueta'
+import { etiquetaComanda, insigniaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 
 function tiempoTranscurrido(isoString: string): { minutos: number; label: string; urgente: boolean } {
   const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000)
@@ -149,7 +149,7 @@ function TarjetaComandaBar({ comanda, todosLosItems, itemsColumna, columna }: {
             <p className={`text-sm font-bold ${headerText}`}>{etiquetaComanda(comanda)}</p>
             <p className={`text-xs ${headerMuted}`}>
               {esPedido(comanda)
-                ? <><b>{comanda.paraLlevar ? '🛍 PARA LLEVAR' : 'COMER AQUÍ'}</b>{comanda.horaRecojo ? ` · recoge ${new Date(comanda.horaRecojo).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</>
+                ? <><b>{MODALIDADES[modalidadDe(comanda)].emoji} {MODALIDADES[modalidadDe(comanda)].kds}</b>{comanda.horaRecojo ? ` · recoge ${new Date(comanda.horaRecojo).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })}` : ''}</>
                 : comanda.mozo}
             </p>
           </div>

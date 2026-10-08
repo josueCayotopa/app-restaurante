@@ -8,7 +8,7 @@ export interface ItemTicket {
 export interface ComandaTicket {
   numeroMesa: number; mesasUnidas?: number[] | null; mozo: string; notaGeneral?: string | null
   tipo?: string; numero?: number; clienteNombre?: string | null; clienteTelefono?: string | null
-  paraLlevar?: boolean; descartable?: number; horaRecojo?: Date | string | null
+  modalidad?: string; paraLlevar?: boolean; descartable?: number; horaRecojo?: Date | string | null
   creadaEn: Date | string; items: ItemTicket[]
   subtotal?: number | null; descuentoPct?: number; descuentoMonto?: number; propina?: number
   totalCobrado?: number | null; total: number; metodoPago?: string | null
@@ -35,6 +35,11 @@ const fechaHora = (d: Date | string) => {
   const f = new Date(d)
   return `${f.toLocaleDateString('es-PE')} ${horaCorta(f)}`
 }
+// Pedidos: cómo se entrega (los antiguos solo tienen paraLlevar)
+const modalidadDe = (c: { modalidad?: string; paraLlevar?: boolean }) =>
+  c.modalidad === 'delivery' ? 'delivery' : c.modalidad === 'llevar' || (c.modalidad !== 'local' && c.paraLlevar) ? 'llevar' : 'local'
+const MODALIDAD_TICKET = { local: 'PEDIDO - COMER AQUI', llevar: 'PARA LLEVAR', delivery: 'DELIVERY' }
+const CARGO_TICKET = { local: 'Cargo', llevar: 'Descartable', delivery: 'Delivery' }
 const mesaLabel = (c: { numeroMesa: number; mesasUnidas?: number[] | null }) =>
   `${c.numeroMesa}${c.mesasUnidas?.length ? ` + ${c.mesasUnidas.join(' + ')}` : ''}`
 // "Mesa 4 + 5" o "Pedido #12 · Juan" (pedidos por teléfono)
@@ -54,7 +59,7 @@ export function ticketComanda(c: ComandaTicket, items: ItemTicket[], area: 'coci
     texto(area === 'cocina' ? 'COCINA' : 'BAR', { alinear: 'centro', negrita: true, invertido: true }),
     ...(c.tipo === 'pedido'
       ? [
-          texto(c.paraLlevar ? 'PARA LLEVAR' : 'PEDIDO - COMER AQUI', { alinear: 'centro', negrita: true, tam: 2 }),
+          texto(MODALIDAD_TICKET[modalidadDe(c)], { alinear: 'centro', negrita: true, tam: 2 }),
           texto(`#${c.numero ?? ''} ${c.clienteNombre ?? ''}`.trim(), { alinear: 'centro', negrita: true, tam: 'alto' }),
           ...(c.horaRecojo ? [texto(`Recoge: ${horaCorta(c.horaRecojo)}`, { alinear: 'centro', negrita: true })] : []),
         ]
@@ -85,7 +90,7 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
   const l: Linea[] = [
     ...encabezado('Ticket de consumo'),
     ...(c.tipo === 'pedido'
-      ? [fila('Pedido', `#${c.numero ?? ''} ${c.paraLlevar ? '(para llevar)' : '(local)'}`), fila('Cliente', c.clienteNombre ?? '-'),
+      ? [fila('Pedido', `#${c.numero ?? ''} (${({ local: 'local', llevar: 'para llevar', delivery: 'delivery' })[modalidadDe(c)]})`), fila('Cliente', c.clienteNombre ?? '-'),
          ...(c.clienteTelefono ? [fila('Teléfono', c.clienteTelefono)] : [])]
       : [fila('Mesa', mesaLabel(c)), fila('Mozo', c.mozo)]),
     ...(c.cobradaPor ? [fila('Cajero', c.cobradaPor)] : []),
@@ -96,7 +101,7 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
     l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
   }
   const descartable = c.descartable ?? 0
-  if (descartable > 0) l.push(fila('Descartable (envases)', S(descartable)))
+  if (descartable > 0) l.push(fila(CARGO_TICKET[modalidadDe(c)], S(descartable)))
   l.push(separador(), fila('Subtotal', S(subtotal)))
   if (descuento > 0) l.push(fila(`Descuento${c.descuentoPct ? ` (${c.descuentoPct}%)` : ''}`, `-${S(descuento)}`))
   if (propina > 0) l.push(fila('Propina', S(propina)))
@@ -136,7 +141,7 @@ export function ticketPrecuenta(c: ComandaTicket, promo?: { nombre: string; porc
     separador(),
   ]
   for (const i of items) l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
-  if (descartable > 0) l.push(fila('Descartable (envases)', S(descartable)))
+  if (descartable > 0) l.push(fila(CARGO_TICKET[modalidadDe(c)], S(descartable)))
   l.push(separador(), fila('Subtotal', S(subtotal + descartable)))
   if (descuento > 0 && promo) l.push(fila(`Dcto. ${promo.nombre} (${promo.porcentaje}%)`, `-${S(descuento)}`))
   l.push(separador(), fila('TOTAL A PAGAR', S(total), { negrita: true, tam: 'alto' }), separador())

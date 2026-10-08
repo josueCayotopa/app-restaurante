@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
 import { getIo } from '../sockets/io'
-import { subtotalDeItems, validarPago, calcularTotales, DESCARTABLE_LLEVAR } from '../lib/cobro'
+import { subtotalDeItems, validarPago, calcularTotales, MODALIDADES, CARGO_MODALIDAD, type Modalidad } from '../lib/cobro'
 import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
 import { imprimirComandaAuto, imprimirAnulacionAuto } from './impresion'
@@ -585,7 +585,7 @@ router.patch('/:id/cuentas/:cuentaId/pagar', autenticar, requerirRol('admin', 'c
 const ROLES_PEDIDOS = ['admin', 'cajero', 'mozo']
 
 // POST /api/comandas/pedidos
-// Body: { id?, clienteNombre, clienteTelefono?, paraLlevar, horaRecojo?, notaGeneral?, tipoDescuento?, items[] }
+// Body: { id?, clienteNombre, clienteTelefono?, modalidad (local|llevar|delivery), horaRecojo?, notaGeneral?, tipoDescuento?, items[] }
 router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: Request, res: Response): Promise<void> => {
   const { id, items, tipoDescuento, notaGeneral, horaRecojo } = req.body
   // Idempotente (WiFi): el mismo id no crea dos pedidos
@@ -599,7 +599,11 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
   if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene platos ni bebidas' }); return }
   const recojo = horaRecojo ? new Date(horaRecojo) : null
   if (recojo && isNaN(recojo.getTime())) { res.status(400).json({ error: 'Hora de recojo inválida' }); return }
-  const paraLlevar = req.body.paraLlevar !== false   // por defecto, para llevar
+  // modalidad: comer aquí S/ 0 · para llevar S/ 1 (descartable) · delivery S/ 3
+  // (clientes con la versión anterior mandan solo paraLlevar)
+  const modalidad: Modalidad = (MODALIDADES as readonly string[]).includes(req.body.modalidad)
+    ? req.body.modalidad : req.body.paraLlevar === false ? 'local' : 'llevar'
+  const paraLlevar = modalidad !== 'local'
 
   const comanda = await prisma.comanda.create({
     data: {
@@ -607,8 +611,8 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
       tipo: 'pedido',
       mesaId: null,
       numeroMesa: 0,
-      clienteNombre, clienteTelefono, paraLlevar,
-      descartable: paraLlevar ? DESCARTABLE_LLEVAR : 0,
+      clienteNombre, clienteTelefono, modalidad, paraLlevar,
+      descartable: CARGO_MODALIDAD[modalidad],
       horaRecojo: recojo,
       mozo: (await nombreDe(req.usuario?.id)) ?? 'Caja',
       usuarioId: req.usuario?.id ?? null,

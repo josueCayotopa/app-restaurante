@@ -139,6 +139,7 @@ model Comanda {
   numeroMesa    Int                                   // 0 en pedidos
   clienteNombre     String?
   clienteTelefono   String?
+  modalidad         String    @default("local")       // pedidos: local | llevar | delivery
   paraLlevar        Boolean   @default(false)
   descartable       Float     @default(0)             // cargo por envases (para llevar)
   horaRecojo        DateTime?

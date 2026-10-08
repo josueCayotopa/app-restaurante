@@ -9,6 +9,7 @@ import { useToastStore } from '../../store/toastStore'
 import { apiFetch, ApiError } from '../../lib/api'
 import { socket } from '../../lib/socket'
 import { imprimirCobro, imprimirPrecuenta, METODO_LABEL } from '../../lib/impresion'
+import { MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 import type { Comanda } from '../../types'
 import {
   Plus, Phone, Clock, ShoppingBag, UtensilsCrossed, Banknote, PackageCheck, XCircle,
@@ -145,7 +146,7 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
               <a href={`tel:${pedido.clienteTelefono}`} className="inline-flex items-center gap-1 hover:text-gray-800"><Phone size={11} />{pedido.clienteTelefono}</a>
             )}
             <span className="inline-flex items-center gap-1">
-              {pedido.paraLlevar ? <><ShoppingBag size={11} /> Para llevar</> : <><UtensilsCrossed size={11} /> Comer aquí</>}
+              {modalidadDe(pedido) === 'local' ? <UtensilsCrossed size={11} /> : <ShoppingBag size={11} />} {MODALIDADES[modalidadDe(pedido)].label}
             </span>
             <span className="inline-flex items-center gap-1"><Clock size={11} />{hora(pedido.creadaEn)}</span>
           </p>
@@ -182,7 +183,7 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
           </div>
         ))}
         {(pedido.descartable ?? 0) > 0 && (
-          <div className="flex justify-between gap-2 text-gray-400"><span>Descartable</span><span>{soles(pedido.descartable ?? 0)}</span></div>
+          <div className="flex justify-between gap-2 text-gray-400"><span>{MODALIDADES[modalidadDe(pedido)].cargoLabel || 'Cargo'}</span><span>{soles(pedido.descartable ?? 0)}</span></div>
         )}
         {pedido.notaGeneral && <p className="text-amber-600 font-medium pt-1">Nota: {pedido.notaGeneral}</p>}
       </div>
@@ -293,7 +294,7 @@ export default function PedidosPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header titulo="Pedidos" subtitulo="Pedidos por teléfono · para llevar" />
+      <Header titulo="Pedidos" subtitulo="Pedidos por teléfono · para llevar y delivery" />
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
         {/* Resumen y acciones */}

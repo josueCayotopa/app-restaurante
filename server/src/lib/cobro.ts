@@ -3,8 +3,10 @@
 export const METODOS_PAGO = ['efectivo', 'tarjeta', 'yape_plin', 'mixto'] as const
 export const METODOS_RESTO = ['tarjeta', 'yape_plin'] as const
 
-// Cargo por envases cuando un pedido es para llevar (uno por pedido)
-export const DESCARTABLE_LLEVAR = 3
+// Pedidos por teléfono: cargo fijo por pedido según cómo se entrega (no recibe descuento)
+export const MODALIDADES = ['local', 'llevar', 'delivery'] as const
+export type Modalidad = typeof MODALIDADES[number]
+export const CARGO_MODALIDAD: Record<Modalidad, number> = { local: 0, llevar: 1, delivery: 3 }
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 

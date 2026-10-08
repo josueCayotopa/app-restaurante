@@ -5,7 +5,7 @@ import { useCartaPublicaStore } from '../../store/cartaPublicaStore'
 import { imprimirCobro, METODO_LABEL } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import { ApiError } from '../../lib/api'
-import { etiquetaComanda, esPedido } from '../../lib/etiqueta'
+import { etiquetaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 import type { Comanda, MetodoPago } from '../../types'
 import { CreditCard, Banknote, Smartphone, CheckCircle, X, Printer, SplitSquareHorizontal, Loader2 } from 'lucide-react'
 
@@ -155,7 +155,7 @@ export default function ModalCobro({ comanda, onCerrar, onCobrado }: { comanda: 
               </div>
               {descartable > 0 && (
                 <div className="flex justify-between text-sm text-gray-500">
-                  <span>Descartable (para llevar)</span><span>{soles(descartable)}</span>
+                  <span>{MODALIDADES[modalidadDe(comanda)].cargoLabel || 'Cargo'}</span><span>{soles(descartable)}</span>
                 </div>
               )}
               {descuento > 0 && (

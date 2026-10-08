@@ -88,6 +88,7 @@ export interface Comanda {
   numeroMesa: number
   clienteNombre?: string | null
   clienteTelefono?: string | null
+  modalidad?: 'local' | 'llevar' | 'delivery'
   paraLlevar?: boolean
   descartable?: number
   horaRecojo?: string | null

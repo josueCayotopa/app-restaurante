@@ -220,6 +220,7 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       id: pedido.id,
       clienteNombre: pedido.clienteNombre,
       clienteTelefono: pedido.clienteTelefono,
+      modalidad: pedido.modalidad,
       paraLlevar: pedido.paraLlevar,
       horaRecojo: pedido.horaRecojo,
       tipoDescuento: pedido.tipoDescuento,

@@ -7,7 +7,7 @@ import { useMesasStore } from '../../store/mesasStore'
 import { useToastStore } from '../../store/toastStore'
 import { useTurnoStore } from '../../store/turnoStore'
 import { useAuthStore } from '../../store/authStore'
-import { etiquetaComanda } from '../../lib/etiqueta'
+import { etiquetaComanda, MODALIDADES, type Modalidad } from '../../lib/etiqueta'
 import type {
   Producto, CategoriaProducto, ItemComanda,
   TipoPlato, Comanda, TipoDescuento,
@@ -242,8 +242,6 @@ interface NuevaComandaProps {
   onPedidoCreado?: (pedido: Comanda, pagarAhora: boolean) => void
 }
 
-// Cargo por envases de un pedido para llevar (el servidor aplica el mismo valor)
-export const DESCARTABLE_LLEVAR = 3
 
 // "19:30" → fecha de hoy a esa hora (ISO)
 function horaDeHoy(hhmm: string): string | undefined {
@@ -281,7 +279,7 @@ export default function NuevaComanda({
   // Datos del pedido por teléfono
   const [clienteNombre, setClienteNombre]     = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
-  const [paraLlevar, setParaLlevar]           = useState(true)
+  const [modalidad, setModalidad]             = useState<Modalidad>('llevar')
   const [horaRecojo, setHoraRecojo]           = useState('')
   const [pagarAhora, setPagarAhora]           = useState(false)
 
@@ -331,7 +329,7 @@ export default function NuevaComanda({
   const totalPrecio = itemsPedido.reduce((acc, i) => acc + i.cantidad * i.producto.precio, 0)
 
   const descuentoPct  = descuentos.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
-  const descartable   = modoPedido && paraLlevar ? DESCARTABLE_LLEVAR : 0
+  const descartable   = modoPedido ? MODALIDADES[modalidad].cargo : 0
   const totalConDcto  = totalPrecio * (1 - descuentoPct / 100) + descartable
 
   const cantidadProducto = (productoId: string) =>
@@ -468,7 +466,8 @@ export default function NuevaComanda({
           numeroMesa: 0,
           clienteNombre: clienteNombre.trim(),
           clienteTelefono: clienteTelefono.trim() || null,
-          paraLlevar,
+          modalidad,
+          paraLlevar: modalidad !== 'local',
           descartable,
           horaRecojo: horaRecojo ? horaDeHoy(horaRecojo) ?? null : null,
           estado: 'enviada_cocina',
@@ -819,13 +818,16 @@ export default function NuevaComanda({
                     className="w-28 text-sm bg-white border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:border-steel-400"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {([[true, `🛍 Para llevar (+S/ ${DESCARTABLE_LLEVAR})`], [false, '🍽 Comer aquí']] as const).map(([v, label]) => (
-                    <button key={String(v)} onClick={() => setParaLlevar(v)}
-                      className={`py-2 rounded-lg text-xs font-semibold transition-colors ${paraLlevar === v ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
-                      {label}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['llevar', 'delivery', 'local'] as Modalidad[]).map((m) => (
+                    <button key={m} onClick={() => setModalidad(m)}
+                      className={`py-2 rounded-lg text-xs font-semibold leading-tight transition-colors ${modalidad === m ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      {MODALIDADES[m].emoji} {MODALIDADES[m].label}
+                      {MODALIDADES[m].cargo > 0 && <span className="block text-[10px] opacity-80">+S/ {MODALIDADES[m].cargo}</span>}
                     </button>
                   ))}
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
                   {([[true, '💵 Paga ahora'], [false, '⏳ Paga al recoger']] as const).map(([v, label]) => (
                     <button key={String(v)} onClick={() => setPagarAhora(v)}
                       className={`py-2 rounded-lg text-xs font-semibold transition-colors ${pagarAhora === v ? 'bg-gold-500 text-gray-900' : 'bg-white border border-gray-200 text-gray-600'}`}>
@@ -980,7 +982,7 @@ export default function NuevaComanda({
               )}
               {descartable > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Descartable (para llevar)</span>
+                  <span className="text-gray-500">{MODALIDADES[modalidad].cargoLabel}</span>
                   <span className="font-semibold text-gray-700">S/ {descartable.toFixed(2)}</span>
                 </div>
               )}
