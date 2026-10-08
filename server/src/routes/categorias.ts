@@ -28,7 +28,7 @@ router.get('/', autenticar, async (_req: Request, res: Response) => {
 })
 
 // POST /api/categorias
-router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.post('/', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const r = datosCategoria(req.body)
   if ('error' in r) { res.status(400).json({ error: r.error }); return }
   const existe = await prisma.categoriaProducto.findFirst({ where: { nombre: { equals: r.data!.nombre, mode: 'insensitive' } } })
@@ -39,7 +39,7 @@ router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Res
 })
 
 // PATCH /api/categorias/:id
-router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.patch('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const r = datosCategoria(req.body)
   if ('error' in r) { res.status(400).json({ error: r.error }); return }
   const categoria = await prisma.categoriaProducto.update({ where: { id: String(req.params.id) }, data: r.data! })
@@ -47,7 +47,7 @@ router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res:
 })
 
 // DELETE /api/categorias/:id — solo si ningún producto la usa
-router.delete('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.delete('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id)
   const enUso = await prisma.producto.count({ where: { categoria: id } })
   if (enUso > 0) {

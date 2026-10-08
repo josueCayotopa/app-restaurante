@@ -39,7 +39,7 @@ function datosPromo(body: Record<string, unknown>) {
 }
 
 // POST /api/carta/promociones
-router.post('/promociones', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.post('/promociones', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const r = datosPromo(req.body)
   if ('error' in r) { res.status(400).json({ error: r.error }); return }
   const promo = await prisma.promocion.create({ data: r.data! })
@@ -47,7 +47,7 @@ router.post('/promociones', autenticar, requerirRol('admin'), async (req: Reques
 })
 
 // PATCH /api/carta/promociones/:id
-router.patch('/promociones/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.patch('/promociones/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const r = datosPromo(req.body)
   if ('error' in r) { res.status(400).json({ error: r.error }); return }
   const promo = await prisma.promocion.update({ where: { id: String(req.params.id) }, data: r.data! })
@@ -55,7 +55,7 @@ router.patch('/promociones/:id', autenticar, requerirRol('admin'), async (req: R
 })
 
 // DELETE /api/carta/promociones/:id
-router.delete('/promociones/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+router.delete('/promociones/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
   await prisma.promocion.delete({ where: { id: String(req.params.id) } })
   res.status(204).send()
 })

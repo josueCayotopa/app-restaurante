@@ -532,7 +532,8 @@ type ModalPromoState = { abierto: false } | { abierto: true; promo?: Promocion }
 export default function CartaPublicaPage() {
   const { promociones, agregarPromo, actualizarPromo, eliminarPromo } = useCartaPublicaStore()
   const { productos, actualizarProducto } = useCartaStore()
-  const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
+  // Admin y Caja pueden editar la carta
+  const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin' || s.usuario?.rol === 'cajero')
   const [navActiva, setNavActiva]   = useState<string | null>(null)
   const [modal, setModal]           = useState<ModalState>({ abierto: false })
   const [modalPromo, setModalPromo] = useState<ModalPromoState>({ abierto: false })

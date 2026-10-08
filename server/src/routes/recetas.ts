@@ -31,7 +31,7 @@ router.get('/', autenticar, async (_req: Request, res: Response) => {
 })
 
 // PUT /api/recetas/:productoId { lineas: [{ insumoId, cantidad }] } → reemplaza la receta
-router.put('/:productoId', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
+router.put('/:productoId', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
   const productoId = String(req.params.productoId)
   const producto = await prisma.producto.findUnique({ where: { id: productoId } })
   if (!producto) { res.status(404).json({ error: 'Producto no encontrado' }); return }

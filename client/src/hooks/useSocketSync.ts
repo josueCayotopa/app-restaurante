@@ -50,7 +50,8 @@ function etiquetaDe(comandaId: string, numeroMesa?: number) {
 //  - Bar (bartender): lo mismo pero de bebidas
 //  - Mozos: solo "listo para servir" (lo que tienen que ir a recoger)
 //  - Caja: solo cuentas listas para cobrar (todos los platos listos, o el mozo pidió la precuenta)
-//  - Admin: en Cocina, Bar o Caja se comporta como esa área; en las demás pantallas oye todo
+//  - Admin: en Cocina, Bar o Caja se comporta como esa área; en las demás, platos listos y cuentas
+//    por cobrar (NO las comandas que envían los mozos: eso suena solo en Cocina/Bar)
 type Evento = 'pedido' | 'listo' | 'cobrar'
 function perfilAviso(): 'cocina' | 'bar' | 'salon' | 'caja' | 'todo' {
   const rol = useAuthStore.getState().usuario?.rol
@@ -67,7 +68,7 @@ function perfilAviso(): 'cocina' | 'bar' | 'salon' | 'caja' | 'todo' {
 function debeAvisar(evento: Evento, area?: string): boolean {
   const perfil = perfilAviso()
   const deArea = area === 'bar' ? 'bar' : 'cocina'
-  if (perfil === 'todo') return true
+  if (perfil === 'todo') return evento !== 'pedido'
   if (perfil === 'caja') return evento === 'cobrar'
   if (perfil === 'salon') return evento === 'listo'
   return evento === 'pedido' && deArea === perfil

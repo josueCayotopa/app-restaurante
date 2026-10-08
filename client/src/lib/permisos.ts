@@ -7,7 +7,8 @@ export const RUTAS_POR_ROL: Record<string, string[]> = {
   mozo: ['/', '/comandas', '/pedidos', '/reservas', '/carta', '/configuracion'],
   cocinero: ['/cocina', '/configuracion'],
   bartender: ['/bar', '/configuracion'],
-  cajero: ['/caja', '/pedidos', '/configuracion'],
+  // Caja también ve el estado de las mesas y gestiona productos y carta
+  cajero: ['/caja', '/pedidos', '/', '/menu', '/carta', '/configuracion'],
 }
 
 export function rutasPermitidas(rol: string | undefined): string[] {

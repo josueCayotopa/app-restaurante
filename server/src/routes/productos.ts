@@ -32,7 +32,7 @@ router.get('/:id', autenticar, async (req: Request, res: Response): Promise<void
 })
 
 // POST /api/productos
-router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+router.post('/', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
   const {
     nombre, descripcion, precio, categoria, disponible, imagen,
     tiempoPreparacion, esAlcoholico, tieneGuarnicion, guarnicionesDisponibles,
@@ -56,7 +56,7 @@ router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Res
 })
 
 // PATCH /api/productos/:id
-router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+router.patch('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
   const { guarnicionesDisponibles, ...resto } = req.body
   const p = await prisma.producto.update({
     where: { id: String(req.params.id) },
@@ -71,7 +71,7 @@ router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res:
 })
 
 // PATCH /api/productos/:id/disponibilidad
-router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cocinero', 'bartender'), async (req: Request, res: Response) => {
+router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cajero', 'cocinero', 'bartender'), async (req: Request, res: Response) => {
   const { disponible } = req.body
   const p = await prisma.producto.update({
     where: { id: String(req.params.id) },
@@ -81,7 +81,7 @@ router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cocinero',
 })
 
 // DELETE /api/productos/:id
-router.delete('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+router.delete('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
   await prisma.producto.delete({ where: { id: String(req.params.id) } })
   res.status(204).send()
 })
