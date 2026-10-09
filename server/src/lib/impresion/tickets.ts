@@ -8,7 +8,7 @@ export interface ItemTicket {
 export interface ComandaTicket {
   numeroMesa: number; mesasUnidas?: number[] | null; mozo: string; notaGeneral?: string | null
   tipo?: string; numero?: number; clienteNombre?: string | null; clienteTelefono?: string | null
-  modalidad?: string; paraLlevar?: boolean; descartable?: number; horaRecojo?: Date | string | null
+  modalidad?: string; paraLlevar?: boolean; descartable?: number; descartables?: number; horaRecojo?: Date | string | null
   creadaEn: Date | string; items: ItemTicket[]
   subtotal?: number | null; descuentoPct?: number; descuentoMonto?: number; propina?: number
   totalCobrado?: number | null; total: number; metodoPago?: string | null
@@ -39,7 +39,19 @@ const fechaHora = (d: Date | string) => {
 const modalidadDe = (c: { modalidad?: string; paraLlevar?: boolean }) =>
   c.modalidad === 'delivery' ? 'delivery' : c.modalidad === 'llevar' || (c.modalidad !== 'local' && c.paraLlevar) ? 'llevar' : 'local'
 const MODALIDAD_TICKET = { local: 'PEDIDO - COMER AQUI', llevar: 'PARA LLEVAR', delivery: 'DELIVERY' }
-const CARGO_TICKET = { local: 'Cargo', llevar: 'Descartable', delivery: 'Delivery' }
+// Líneas de cargos extra de un pedido: descartables (S/ 1 c/u) y envío del delivery
+function lineasCargos(c: ComandaTicket): Linea[] {
+  const total = c.descartable ?? 0
+  if (total <= 0) return []
+  const m = modalidadDe(c)
+  const envio = m === 'delivery' ? 3 : 0
+  const n = c.descartables || Math.round(Math.max(0, total - envio))   // pedidos anteriores al contador
+  const l: Linea[] = []
+  if (n > 0) l.push(fila(`Descartables x${n}`, S(total - envio)))
+  if (envio) l.push(fila('Delivery (envío)', S(envio)))
+  if (!l.length) l.push(fila('Cargo', S(total)))
+  return l
+}
 const mesaLabel = (c: { numeroMesa: number; mesasUnidas?: number[] | null }) =>
   `${c.numeroMesa}${c.mesasUnidas?.length ? ` + ${c.mesasUnidas.join(' + ')}` : ''}`
 // "Mesa 4 + 5" o "Pedido #12 · Juan" (pedidos por teléfono)
@@ -101,7 +113,7 @@ export function ticketCobro(c: ComandaTicket, abrirGaveta = false): Documento {
     l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
   }
   const descartable = c.descartable ?? 0
-  if (descartable > 0) l.push(fila(CARGO_TICKET[modalidadDe(c)], S(descartable)))
+  if (descartable > 0) l.push(...lineasCargos(c))
   l.push(separador(), fila('Subtotal', S(subtotal)))
   if (descuento > 0) l.push(fila(`Descuento${c.descuentoPct ? ` (${c.descuentoPct}%)` : ''}`, `-${S(descuento)}`))
   if (propina > 0) l.push(fila('Propina', S(propina)))
@@ -141,7 +153,7 @@ export function ticketPrecuenta(c: ComandaTicket, promo?: { nombre: string; porc
     separador(),
   ]
   for (const i of items) l.push(fila(`${i.cantidad} x ${i.nombre}`, S(i.cantidad * i.precioUnitario)))
-  if (descartable > 0) l.push(fila(CARGO_TICKET[modalidadDe(c)], S(descartable)))
+  if (descartable > 0) l.push(...lineasCargos(c))
   l.push(separador(), fila('Subtotal', S(subtotal + descartable)))
   if (descuento > 0 && promo) l.push(fila(`Dcto. ${promo.nombre} (${promo.porcentaje}%)`, `-${S(descuento)}`))
   l.push(separador(), fila('TOTAL A PAGAR', S(total), { negrita: true, tam: 'alto' }), separador())

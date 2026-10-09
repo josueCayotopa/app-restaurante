@@ -7,7 +7,8 @@ import { useMesasStore } from '../../store/mesasStore'
 import { useToastStore } from '../../store/toastStore'
 import { useTurnoStore } from '../../store/turnoStore'
 import { useAuthStore } from '../../store/authStore'
-import { etiquetaComanda, MODALIDADES, type Modalidad } from '../../lib/etiqueta'
+import { etiquetaComanda, MODALIDADES, cargoPedido, type Modalidad } from '../../lib/etiqueta'
+import { ContadorDescartables } from './Descartables'
 import type {
   Producto, CategoriaProducto, ItemComanda,
   TipoPlato, Comanda, TipoDescuento,
@@ -282,6 +283,8 @@ export default function NuevaComanda({
   const [clienteNombre, setClienteNombre]     = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [modalidad, setModalidad]             = useState<Modalidad>('llevar')
+  // null = automático (1 por plato de cocina); al tocar − / + queda fijo en lo elegido
+  const [descartablesManual, setDescartablesManual] = useState<number | null>(null)
   const [horaRecojo, setHoraRecojo]           = useState('')
   const [pagarAhora, setPagarAhora]           = useState(false)
 
@@ -331,7 +334,9 @@ export default function NuevaComanda({
   const totalPrecio = itemsPedido.reduce((acc, i) => acc + i.cantidad * i.producto.precio, 0)
 
   const descuentoPct  = descuentos.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
-  const descartable   = modoPedido ? MODALIDADES[modalidad].cargo : 0
+  const platosCocina  = itemsPedido.filter((i) => areaDeCategoria(categorias, i.producto.categoria) === 'cocina').reduce((a, i) => a + i.cantidad, 0)
+  const descartables  = modoPedido && MODALIDADES[modalidad].descartables ? (descartablesManual ?? platosCocina) : 0
+  const descartable   = modoPedido ? cargoPedido(modalidad, descartables) : 0
   const totalConDcto  = totalPrecio * (1 - descuentoPct / 100) + descartable
 
   const cantidadProducto = (productoId: string) =>
@@ -470,6 +475,7 @@ export default function NuevaComanda({
           clienteTelefono: clienteTelefono.trim() || null,
           modalidad,
           paraLlevar: modalidad !== 'local',
+          descartables,
           descartable,
           horaRecojo: horaRecojo ? horaDeHoy(horaRecojo) ?? null : null,
           estado: 'enviada_cocina',
@@ -843,10 +849,16 @@ export default function NuevaComanda({
                     <button key={m} onClick={() => setModalidad(m)}
                       className={`py-2 rounded-lg text-xs font-semibold leading-tight transition-colors ${modalidad === m ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
                       {MODALIDADES[m].emoji} {MODALIDADES[m].label}
-                      {MODALIDADES[m].cargo > 0 && <span className="block text-[10px] opacity-80">+S/ {MODALIDADES[m].cargo}</span>}
+                      {MODALIDADES[m].envio > 0 && <span className="block text-[10px] opacity-80">+S/ {MODALIDADES[m].envio} envío</span>}
                     </button>
                   ))}
                 </div>
+                {MODALIDADES[modalidad].descartables && (
+                  <div className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                    <span className="text-xs font-semibold text-gray-600">Descartables <span className="font-normal text-gray-400">(S/ 1 c/u)</span></span>
+                    <ContadorDescartables valor={descartables} onCambiar={setDescartablesManual} auto={descartablesManual === null} />
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-1.5">
                   {([[true, '💵 Paga ahora'], [false, '⏳ Paga al recoger']] as const).map(([v, label]) => (
                     <button key={String(v)} onClick={() => setPagarAhora(v)}
@@ -1000,10 +1012,16 @@ export default function NuevaComanda({
                   </span>
                 </div>
               )}
-              {descartable > 0 && (
+              {descartables > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">{MODALIDADES[modalidad].cargoLabel}</span>
-                  <span className="font-semibold text-gray-700">S/ {descartable.toFixed(2)}</span>
+                  <span className="text-gray-500">Descartables ×{descartables}</span>
+                  <span className="font-semibold text-gray-700">S/ {descartables.toFixed(2)}</span>
+                </div>
+              )}
+              {modoPedido && MODALIDADES[modalidad].envio > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Delivery (envío)</span>
+                  <span className="font-semibold text-gray-700">S/ {MODALIDADES[modalidad].envio.toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm border-t border-gray-100 pt-2">

@@ -104,6 +104,7 @@ interface ComandasState {
   crearPedido:            (pedido: Comanda) => Promise<ResultadoEnvio>
   entregarPedido:         (id: string) => Promise<Comanda>
   cancelarComanda:        (id: string, motivo: string) => Promise<Comanda & { reembolso: number }>
+  ajustarDescartables:    (id: string, cantidad: number) => Promise<void>
   actualizarEstadoItem:   (comandaId: string, itemId: string, estado: EstadoItem) => void
   actualizarEstadoComanda:(comandaId: string, estado: EstadoComanda) => void
   agregarItem:            (comandaId: string, item: ItemComanda) => void
@@ -222,6 +223,7 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
       clienteTelefono: pedido.clienteTelefono,
       modalidad: pedido.modalidad,
       paraLlevar: pedido.paraLlevar,
+      descartables: pedido.descartables,
       horaRecojo: pedido.horaRecojo,
       tipoDescuento: pedido.tipoDescuento,
       notaGeneral: pedido.notaGeneral,
@@ -234,6 +236,23 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
     const comanda = await apiFetch<Comanda>(`/api/comandas/${id}/entregar`, { method: 'POST', body: '{}' })
     get().aplicarComandaRemota(comanda)
     return comanda
+  },
+
+  // − / + de descartables de un pedido: al instante en pantalla y luego confirma el servidor
+  ajustarDescartables: async (id, cantidad) => {
+    const antes = get().comandas.find((c) => c.id === id)
+    if (antes) {
+      const m = antes.modalidad ?? (antes.paraLlevar ? 'llevar' : 'local')
+      const extra = (m === 'delivery' ? 3 : 0) + (m === 'local' ? 0 : cantidad)
+      get().aplicarComandaRemota({ ...antes, descartables: cantidad, descartable: extra })
+    }
+    try {
+      const c = await apiFetch<Comanda>(`/api/comandas/${id}/descartables`, { method: 'PATCH', body: JSON.stringify({ cantidad }) })
+      get().aplicarComandaRemota(c)
+    } catch (e) {
+      if (antes) get().aplicarComandaRemota(antes)
+      throw e
+    }
   },
 
   // Mesa o pedido: anula lo pendiente en Cocina/Bar y libera la mesa (el servidor valida)

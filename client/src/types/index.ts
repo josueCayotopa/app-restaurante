@@ -90,7 +90,8 @@ export interface Comanda {
   clienteTelefono?: string | null
   modalidad?: 'local' | 'llevar' | 'delivery'
   paraLlevar?: boolean
-  descartable?: number
+  descartable?: number      // cargo extra total del pedido (descartables + delivery)
+  descartables?: number     // nº de envases
   horaRecojo?: string | null
   entregadaEn?: string | null
   motivoCancelacion?: string | null

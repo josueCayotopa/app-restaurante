@@ -11,6 +11,7 @@ import { apiFetch, ApiError } from '../../lib/api'
 import { socket } from '../../lib/socket'
 import { imprimirCobro, imprimirPrecuenta, METODO_LABEL } from '../../lib/impresion'
 import { MODALIDADES, modalidadDe } from '../../lib/etiqueta'
+import { ContadorDescartables, cargosDe } from '../../components/comandas/Descartables'
 import type { Comanda } from '../../types'
 import {
   Plus, Phone, Clock, ShoppingBag, UtensilsCrossed, Banknote, PackageCheck, XCircle,
@@ -52,6 +53,10 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
   const prep = estadoPreparacion(pedido)
   const items = itemsCobrables(pedido)
   const enCurso = activo(pedido)
+  const ajustarDescartables = useComandasStore((s) => s.ajustarDescartables)
+  const cambiarDescartables = (n: number) => {
+    ajustarDescartables(pedido.id, n).catch((e) => useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se pudo cambiar', mensaje: errorDe(e), duracion: 5000 }))
+  }
 
   const entregar = async () => {
     if (!pagado || entregando) return
@@ -117,8 +122,21 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
             <span className="shrink-0">{soles(it.cantidad * it.precioUnitario)}</span>
           </div>
         ))}
-        {(pedido.descartable ?? 0) > 0 && (
-          <div className="flex justify-between gap-2 text-gray-400"><span>{MODALIDADES[modalidadDe(pedido)].cargoLabel || 'Cargo'}</span><span>{soles(pedido.descartable ?? 0)}</span></div>
+        {MODALIDADES[modalidadDe(pedido)].descartables && (
+          <div className="flex items-center justify-between gap-2 pt-1">
+            {enCurso && !pagado ? (
+              <span className="flex items-center gap-2 text-gray-600">
+                Descartables
+                <ContadorDescartables valor={cargosDe(pedido).n} onCambiar={cambiarDescartables} />
+              </span>
+            ) : (
+              <span className="text-gray-400">Descartables ×{cargosDe(pedido).n}</span>
+            )}
+            <span className="shrink-0 text-gray-400">{soles(cargosDe(pedido).montoDescartables)}</span>
+          </div>
+        )}
+        {cargosDe(pedido).envio > 0 && (
+          <div className="flex justify-between gap-2 text-gray-400"><span>Delivery (envío)</span><span>{soles(cargosDe(pedido).envio)}</span></div>
         )}
         {pedido.notaGeneral && <p className="text-amber-600 font-medium pt-1">Nota: {pedido.notaGeneral}</p>}
       </div>

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
 import { getIo } from '../sockets/io'
-import { subtotalDeItems, validarPago, calcularTotales, MODALIDADES, CARGO_MODALIDAD, type Modalidad } from '../lib/cobro'
+import { subtotalDeItems, validarPago, calcularTotales, MODALIDADES, cargoPedido, llevaDescartables, platosConEnvase, type Modalidad } from '../lib/cobro'
 import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
 import { imprimirComandaAuto, imprimirAnulacionAuto } from './impresion'
@@ -307,6 +307,13 @@ router.post('/:id/items/:itemId/anular', autenticar, async (req: Request, res: R
   const mapeada = mapItem(item as never)
   getIo().emit('comanda:item_actualizado', { comandaId: id, numeroMesa: comanda.numeroMesa, item: mapeada, origenSocketId: req.body?.socketId })
   imprimirAnulacionAuto({ ...comanda, mesasUnidas: comanda.mesasUnidas ? JSON.parse(comanda.mesasUnidas) : null, items: [] } as never, [mapeada] as never)
+  // Pedido para llevar/delivery: se quita el descartable de ese plato
+  const menos = comanda.tipo === 'pedido' && llevaDescartables(comanda.modalidad) ? platosConEnvase([{ area: item.area, cantidad: item.cantidad }]) : 0
+  if (menos) {
+    const n = Math.max(0, comanda.descartables - menos)
+    const act = await prisma.comanda.update({ where: { id }, data: { descartables: n, descartable: cargoPedido(comanda.modalidad, n) }, include: INCLUDE_COMPLETO })
+    getIo().emit('comanda:actualizada', mapComanda(act as never))
+  }
   res.json(mapeada)
 })
 
@@ -399,9 +406,14 @@ router.post('/:id/items/batch', autenticar, async (req: Request, res: Response):
   )
 
   const addedTotal = aCrear.reduce((acc, i) => acc + i.cantidad * i.precioUnitario, 0)
+  // Pedido para llevar/delivery: un descartable más por cada plato nuevo de cocina
+  const masDescartables = comanda.tipo === 'pedido' && llevaDescartables(comanda.modalidad) ? platosConEnvase(aCrear) : 0
   const updatedComanda = await prisma.comanda.update({
     where: { id },
-    data: { total: comanda.total + addedTotal, estado: 'enviada_cocina' },
+    data: {
+      total: comanda.total + addedTotal, estado: 'enviada_cocina',
+      ...(masDescartables ? { descartables: comanda.descartables + masDescartables, descartable: cargoPedido(comanda.modalidad, comanda.descartables + masDescartables) } : {}),
+    },
     include: { items: true, cuentas: INCLUDE_CUENTAS },
   })
 
@@ -605,11 +617,15 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
   if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene platos ni bebidas' }); return }
   const recojo = horaRecojo ? new Date(horaRecojo) : null
   if (recojo && isNaN(recojo.getTime())) { res.status(400).json({ error: 'Hora de recojo inválida' }); return }
-  // modalidad: comer aquí S/ 0 · para llevar S/ 1 (descartable) · delivery S/ 3
+  // modalidad: comer aquí · para llevar (descartables) · delivery (descartables + envío)
   // (clientes con la versión anterior mandan solo paraLlevar)
   const modalidad: Modalidad = (MODALIDADES as readonly string[]).includes(req.body.modalidad)
     ? req.body.modalidad : req.body.paraLlevar === false ? 'local' : 'llevar'
   const paraLlevar = modalidad !== 'local'
+  // Descartables: lo que indique el que toma el pedido, o uno por plato de cocina
+  const pedidos = Number(req.body.descartables)
+  const descartables = !llevaDescartables(modalidad) ? 0
+    : Number.isInteger(pedidos) && pedidos >= 0 ? Math.min(pedidos, 200) : platosConEnvase(items)
 
   const comanda = await prisma.comanda.create({
     data: {
@@ -618,7 +634,8 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
       mesaId: null,
       numeroMesa: 0,
       clienteNombre, clienteTelefono, modalidad, paraLlevar,
-      descartable: CARGO_MODALIDAD[modalidad],
+      descartables,
+      descartable: cargoPedido(modalidad, descartables),
       horaRecojo: recojo,
       mozo: (await nombreDe(req.usuario?.id)) ?? 'Caja',
       usuarioId: req.usuario?.id ?? null,
@@ -644,6 +661,22 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
   // Cocina/Bar, impresión automática e inventario: igual que una comanda de mesa
   emitirItemsAgregados(mapeada, mapeada.items as ItemMapeado[], true, req.body.socketId)
   res.status(201).json(mapeada)
+})
+
+// PATCH /api/comandas/:id/descartables { cantidad } → ajustar a mano los envases de un pedido (antes de cobrar)
+router.patch('/:id/descartables', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: Request, res: Response): Promise<void> => {
+  const id = String(req.params.id)
+  const cantidad = Number(req.body?.cantidad)
+  if (!Number.isInteger(cantidad) || cantidad < 0 || cantidad > 200) { res.status(400).json({ error: 'Cantidad de descartables inválida' }); return }
+  const c = await prisma.comanda.findUnique({ where: { id } })
+  if (!c || c.tipo !== 'pedido') { res.status(404).json({ error: 'Pedido no encontrado' }); return }
+  if (c.estado === 'cerrada' || c.estado === 'cancelada') { res.status(409).json({ error: 'El pedido ya está cerrado' }); return }
+  if (c.cobradaEn) { res.status(409).json({ error: 'El pedido ya está pagado: no se pueden cambiar los descartables' }); return }
+  if (!llevaDescartables(c.modalidad)) { res.status(400).json({ error: 'Los pedidos para comer aquí no llevan descartables' }); return }
+  const act = await prisma.comanda.update({ where: { id }, data: { descartables: cantidad, descartable: cargoPedido(c.modalidad, cantidad) }, include: INCLUDE_COMPLETO })
+  const mapeada = mapComanda(act as never)
+  getIo().emit('comanda:actualizada', mapeada)
+  res.json(mapeada)
 })
 
 // POST /api/comandas/:id/entregar → solo si está pagado

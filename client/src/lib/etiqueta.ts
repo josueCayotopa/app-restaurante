@@ -15,11 +15,16 @@ export const insigniaComanda = (c: ComandaEtiqueta) => (esPedido(c) ? '🛍' : S
 
 // Pedidos por teléfono: cómo se entrega y cuánto se cobra aparte (igual que el servidor)
 export type Modalidad = 'local' | 'llevar' | 'delivery'
-export const MODALIDADES: Record<Modalidad, { label: string; kds: string; cargo: number; cargoLabel: string; emoji: string }> = {
-  local:    { label: 'Comer aquí',  kds: 'COMER AQUÍ',  cargo: 0, cargoLabel: '',            emoji: '🍽' },
-  llevar:   { label: 'Para llevar', kds: 'PARA LLEVAR', cargo: 1, cargoLabel: 'Descartable', emoji: '🛍' },
-  delivery: { label: 'Delivery',    kds: 'DELIVERY',    cargo: 3, cargoLabel: 'Delivery',    emoji: '🛵' },
+// Descartables: S/ 1 c/u (por defecto uno por plato de cocina). Delivery: + S/ 3 de envío.
+export const PRECIO_DESCARTABLE = 1
+export const COSTO_DELIVERY = 3
+export const MODALIDADES: Record<Modalidad, { label: string; kds: string; descartables: boolean; envio: number; emoji: string }> = {
+  local:    { label: 'Comer aquí',  kds: 'COMER AQUÍ',  descartables: false, envio: 0,              emoji: '🍽' },
+  llevar:   { label: 'Para llevar', kds: 'PARA LLEVAR', descartables: true,  envio: 0,              emoji: '🛍' },
+  delivery: { label: 'Delivery',    kds: 'DELIVERY',    descartables: true,  envio: COSTO_DELIVERY, emoji: '🛵' },
 }
+export const cargoPedido = (m: Modalidad, descartables: number) =>
+  (MODALIDADES[m].descartables ? Math.max(0, descartables) * PRECIO_DESCARTABLE : 0) + MODALIDADES[m].envio
 // Los pedidos antiguos solo traen paraLlevar
 export function modalidadDe(c: Partial<Pick<Comanda, 'modalidad' | 'paraLlevar'>>): Modalidad {
   if (c.modalidad === 'delivery' || c.modalidad === 'llevar') return c.modalidad

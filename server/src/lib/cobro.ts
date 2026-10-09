@@ -3,10 +3,20 @@
 export const METODOS_PAGO = ['efectivo', 'tarjeta', 'yape_plin', 'mixto'] as const
 export const METODOS_RESTO = ['tarjeta', 'yape_plin'] as const
 
-// Pedidos por teléfono: cargo fijo por pedido según cómo se entrega (no recibe descuento)
+// Pedidos por teléfono: cargos extra que no reciben descuento
+//  - descartables: S/ 1 por envase (por defecto uno por plato de cocina; se puede ajustar)
+//  - delivery: S/ 3 de envío
 export const MODALIDADES = ['local', 'llevar', 'delivery'] as const
 export type Modalidad = typeof MODALIDADES[number]
-export const CARGO_MODALIDAD: Record<Modalidad, number> = { local: 0, llevar: 1, delivery: 3 }
+export const PRECIO_DESCARTABLE = 1
+export const COSTO_DELIVERY = 3
+export const llevaDescartables = (m: string) => m === 'llevar' || m === 'delivery'
+export function cargoPedido(modalidad: string, descartables: number) {
+  return (llevaDescartables(modalidad) ? Math.max(0, descartables) * PRECIO_DESCARTABLE : 0) + (modalidad === 'delivery' ? COSTO_DELIVERY : 0)
+}
+// Platos que llevan envase: los de cocina (las bebidas no)
+export const platosConEnvase = (items: { area: string; cantidad: number; estado?: string }[]) =>
+  items.filter((i) => i.area === 'cocina' && i.estado !== 'cancelado' && i.estado !== 'devuelto').reduce((a, i) => a + i.cantidad, 0)
 
 const redondear = (n: number) => Math.round(n * 100) / 100
 

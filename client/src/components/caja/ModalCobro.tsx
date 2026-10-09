@@ -5,7 +5,8 @@ import { useCartaPublicaStore } from '../../store/cartaPublicaStore'
 import { imprimirCobro, METODO_LABEL } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import { ApiError } from '../../lib/api'
-import { etiquetaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
+import { etiquetaComanda, esPedido } from '../../lib/etiqueta'
+import { cargosDe } from '../comandas/Descartables'
 import type { Comanda, MetodoPago } from '../../types'
 import { CreditCard, Banknote, Smartphone, CheckCircle, X, Printer, SplitSquareHorizontal, Loader2 } from 'lucide-react'
 
@@ -153,9 +154,14 @@ export default function ModalCobro({ comanda, onCerrar, onCobrado }: { comanda: 
               <div className="flex justify-between text-sm text-gray-500">
                 <span>Subtotal</span><span>{soles(subtotal)}</span>
               </div>
-              {descartable > 0 && (
+              {descartable > 0 && cargosDe(comanda).montoDescartables > 0 && (
                 <div className="flex justify-between text-sm text-gray-500">
-                  <span>{MODALIDADES[modalidadDe(comanda)].cargoLabel || 'Cargo'}</span><span>{soles(descartable)}</span>
+                  <span>Descartables ×{cargosDe(comanda).n}</span><span>{soles(cargosDe(comanda).montoDescartables)}</span>
+                </div>
+              )}
+              {cargosDe(comanda).envio > 0 && (
+                <div className="flex justify-between text-sm text-gray-500">
+                  <span>Delivery (envío)</span><span>{soles(cargosDe(comanda).envio)}</span>
                 </div>
               )}
               {descuento > 0 && (
