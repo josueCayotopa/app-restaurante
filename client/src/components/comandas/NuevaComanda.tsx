@@ -193,7 +193,7 @@ function ProductoCard({
   onQuitar: () => void
 }) {
   return (
-    <div className={`bg-white border rounded-xl p-3 flex items-center gap-3 transition-all ${
+    <div className={`bg-white border rounded-xl p-2.5 sm:p-3 flex items-center gap-3 transition-all ${
       cantidad > 0 ? 'border-steel-300 shadow-sm' : 'border-gray-100'
     } ${!producto.disponible ? 'opacity-50 pointer-events-none' : ''}`}>
       {producto.imagen && (
@@ -283,8 +283,8 @@ export default function NuevaComanda({
   const [clienteNombre, setClienteNombre]     = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [modalidad, setModalidad]             = useState<Modalidad>('llevar')
-  // null = automático (1 por plato de cocina); al tocar − / + queda fijo en lo elegido
-  const [descartablesManual, setDescartablesManual] = useState<number | null>(null)
+  // Conteo automático (1 por plato de cocina) + ajuste con − / + (sigue subiendo al agregar platos)
+  const [ajusteDescartables, setAjusteDescartables] = useState(0)
   const [horaRecojo, setHoraRecojo]           = useState('')
   const [pagarAhora, setPagarAhora]           = useState(false)
 
@@ -335,7 +335,7 @@ export default function NuevaComanda({
 
   const descuentoPct  = descuentos.find((d) => d.valor === tipoDescuento)?.porcentaje ?? 0
   const platosCocina  = itemsPedido.filter((i) => areaDeCategoria(categorias, i.producto.categoria) === 'cocina').reduce((a, i) => a + i.cantidad, 0)
-  const descartables  = modoPedido && MODALIDADES[modalidad].descartables ? (descartablesManual ?? platosCocina) : 0
+  const descartables  = modoPedido && MODALIDADES[modalidad].descartables ? Math.max(0, platosCocina + ajusteDescartables) : 0
   const descartable   = modoPedido ? cargoPedido(modalidad, descartables) : 0
   const totalConDcto  = totalPrecio * (1 - descuentoPct / 100) + descartable
 
@@ -584,7 +584,7 @@ export default function NuevaComanda({
     <div className="fixed inset-0 z-50 flex">
       <div className="absolute inset-0 bg-black/40" onClick={onCerrar} />
 
-      <div className="relative ml-auto flex h-full w-full max-w-4xl bg-gray-50 shadow-2xl flex-col">
+      <div className="relative ml-auto flex h-full w-full max-w-4xl lg:max-w-6xl 2xl:max-w-7xl bg-gray-50 shadow-2xl flex-col">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center gap-4 shrink-0">
           <button onClick={onCerrar} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
@@ -730,7 +730,7 @@ export default function NuevaComanda({
                 </button>
               ))}
             </div>
-            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+            <div className="flex-1 overflow-y-auto px-3 sm:px-4 pb-4 grid grid-cols-1 xl:grid-cols-2 gap-2 content-start">
               {productosFiltrados.map((producto) => (
                 <ProductoCard
                   key={producto.id}
@@ -741,7 +741,7 @@ export default function NuevaComanda({
                 />
               ))}
               {productosFiltrados.length === 0 && (
-                <div className="text-center py-10 text-gray-300">
+                <div className="text-center py-10 text-gray-300 xl:col-span-2">
                   <p className="text-3xl mb-2">🍽️</p>
                   <p className="text-sm">Sin resultados</p>
                 </div>
@@ -751,7 +751,7 @@ export default function NuevaComanda({
 
           {/* Columna derecha: Pedido */}
           <div className={`bg-white border-l border-gray-200 flex-col ${
-            mobileTab === 'carta' ? 'hidden lg:flex lg:w-80' : 'flex flex-1 lg:flex-none lg:w-80'
+            mobileTab === 'carta' ? 'hidden lg:flex lg:w-[26rem] xl:w-[30rem]' : 'flex flex-1 min-h-0 lg:flex-none lg:w-[26rem] xl:w-[30rem]'
           }`}>
             {/* Ítems existentes en modo agregar */}
             {modoAgregar && itemsExistentes.length > 0 && (
@@ -820,13 +820,13 @@ export default function NuevaComanda({
 
             {/* Datos del cliente (pedido por teléfono) */}
             {modoPedido && (
-              <div className="px-4 py-3 border-b border-gray-100 space-y-2 bg-steel-50">
+              <div className="px-3 sm:px-4 py-2.5 border-b border-gray-100 space-y-1.5 bg-steel-50">
                 <input
                   value={clienteNombre}
                   onChange={(e) => setClienteNombre(e.target.value)}
                   placeholder="Nombre del cliente *"
                   autoFocus
-                  className={`w-full text-sm bg-white border rounded-lg px-3 py-2 focus:outline-none focus:border-steel-400 ${faltaCliente && pedido.size > 0 ? 'border-rojo-400' : 'border-gray-200'}`}
+                  className={`w-full text-sm bg-white border rounded-lg px-3 py-1.5 focus:outline-none focus:border-steel-400 ${faltaCliente && pedido.size > 0 ? 'border-rojo-400' : 'border-gray-200'}`}
                 />
                 <div className="flex gap-2">
                   <input
@@ -834,20 +834,20 @@ export default function NuevaComanda({
                     onChange={(e) => setClienteTelefono(e.target.value)}
                     placeholder="Teléfono"
                     inputMode="tel"
-                    className="flex-1 min-w-0 text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-steel-400"
+                    className="flex-1 min-w-0 text-sm bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-steel-400"
                   />
                   <input
                     type="time"
                     value={horaRecojo}
                     onChange={(e) => setHoraRecojo(e.target.value)}
                     title="Hora de recojo"
-                    className="w-28 text-sm bg-white border border-gray-200 rounded-lg px-2 py-2 focus:outline-none focus:border-steel-400"
+                    className="w-28 text-sm bg-white border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:border-steel-400"
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-1.5">
                   {(['llevar', 'delivery', 'local'] as Modalidad[]).map((m) => (
                     <button key={m} onClick={() => setModalidad(m)}
-                      className={`py-2 rounded-lg text-xs font-semibold leading-tight transition-colors ${modalidad === m ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      className={`py-1.5 rounded-lg text-xs font-semibold leading-tight transition-colors ${modalidad === m ? 'bg-steel-500 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}>
                       {MODALIDADES[m].emoji} {MODALIDADES[m].label}
                       {MODALIDADES[m].envio > 0 && <span className="block text-[10px] opacity-80">+S/ {MODALIDADES[m].envio} envío</span>}
                     </button>
@@ -856,13 +856,13 @@ export default function NuevaComanda({
                 {MODALIDADES[modalidad].descartables && (
                   <div className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
                     <span className="text-xs font-semibold text-gray-600">Descartables <span className="font-normal text-gray-400">(S/ 1 c/u)</span></span>
-                    <ContadorDescartables valor={descartables} onCambiar={setDescartablesManual} auto={descartablesManual === null} />
+                    <ContadorDescartables valor={descartables} onCambiar={(n) => setAjusteDescartables(n - platosCocina)} auto={ajusteDescartables === 0} />
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-1.5">
                   {([[true, '💵 Paga ahora'], [false, '⏳ Paga al recoger']] as const).map(([v, label]) => (
                     <button key={String(v)} onClick={() => setPagarAhora(v)}
-                      className={`py-2 rounded-lg text-xs font-semibold transition-colors ${pagarAhora === v ? 'bg-gold-500 text-gray-900' : 'bg-white border border-gray-200 text-gray-600'}`}>
+                      className={`py-1.5 rounded-lg text-xs font-semibold transition-colors ${pagarAhora === v ? 'bg-gold-500 text-gray-900' : 'bg-white border border-gray-200 text-gray-600'}`}>
                       {label}
                     </button>
                   ))}
@@ -872,15 +872,12 @@ export default function NuevaComanda({
 
             {/* Descuento — control prominente dentro de la columna de Pedido */}
             {!modoAgregar && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-gold-500">
-                <p className="flex items-center gap-1.5 text-xs font-bold text-gray-900 uppercase tracking-wide mb-2">
-                  <Tag size={12} />
-                  Descuento
-                </p>
-                <div className="flex flex-wrap gap-1.5">
+              <div className="px-3 sm:px-4 py-2 border-b border-gray-100 bg-gold-500 flex items-center gap-2">
+                <Tag size={14} className="text-gray-900 shrink-0" aria-label="Descuento" />
+                <div className="flex gap-1.5 overflow-x-auto flex-1 min-w-0 pb-0.5">
                   <button
                     onClick={() => setTipoDescuento(undefined)}
-                    className={`px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                    className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
                       !tipoDescuento
                         ? 'bg-gray-900 text-white'
                         : 'bg-black/10 text-gray-900 hover:bg-black/20'
@@ -892,7 +889,7 @@ export default function NuevaComanda({
                     <button
                       key={d.valor}
                       onClick={() => setTipoDescuento(d.valor)}
-                      className={`px-2.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      className={`shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
                         tipoDescuento === d.valor
                           ? 'bg-white text-gold-700 shadow-sm'
                           : 'bg-black/10 text-gray-900 hover:bg-black/20'
@@ -907,16 +904,13 @@ export default function NuevaComanda({
 
             {/* Nota general — control prominente dentro de la columna de Pedido */}
             {!modoAgregar && (
-              <div className="px-4 py-3 border-b border-gray-100 bg-amber-500">
-                <p className="flex items-center gap-1.5 text-xs font-bold text-gray-900 uppercase tracking-wide mb-2">
-                  <FileText size={12} />
-                  Nota general
-                </p>
+              <div className="px-3 sm:px-4 py-2 border-b border-gray-100 bg-amber-500 flex items-center gap-2">
+                <FileText size={14} className="text-gray-900 shrink-0" aria-label="Nota general" />
                 <input
                   value={notaGeneral}
                   onChange={(e) => setNotaGeneral(e.target.value)}
-                  placeholder={modoPedido ? 'Ej: dirección, sin ají, cubiertos...' : 'Ej: mesa para celíacos, cumpleaños...'}
-                  className="w-full text-xs bg-white text-gray-800 placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
+                  placeholder={modoPedido ? 'Nota general: dirección, sin ají, cubiertos...' : 'Nota general: celíacos, cumpleaños...'}
+                  className="flex-1 min-w-0 text-xs bg-white text-gray-800 placeholder-gray-400 border-none rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900/20"
                 />
               </div>
             )}
