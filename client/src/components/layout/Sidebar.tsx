@@ -4,7 +4,7 @@ import {
   LayoutGrid, ClipboardList, ChefHat, UtensilsCrossed,
   BarChart3, Settings, CalendarDays, Wallet, Package,
   Truck, Users, Beer, MoreHorizontal, X, BookOpen, LogOut,
-  ChevronLeft, ChevronRight, ShoppingBag,
+  ChevronLeft, ChevronRight, ShoppingBag, Ban,
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useTemaStore } from '../../store/temaStore'
@@ -16,6 +16,7 @@ const navItems = [
   { to: '/comandas',      icon: ClipboardList, label: 'Comandas'    },
   { to: '/cocina',        icon: ChefHat,       label: 'Cocina'      },
   { to: '/bar',           icon: Beer,          label: 'Bar'         },
+  { to: '/agotados',      icon: Ban,           label: 'Agotados'    },
   { to: '/pedidos',       icon: ShoppingBag,   label: 'Pedidos'     },
   { to: '/caja',          icon: Wallet,    label: 'Caja'        },
   { to: '/carta',          icon: BookOpen,        label: 'Carta'     },

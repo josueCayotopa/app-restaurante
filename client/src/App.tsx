@@ -10,6 +10,7 @@ import CartaPublicaPage from './pages/carta/CartaPublicaPage'
 import ReservasPage from './pages/reservas/ReservasPage'
 import CajaPage from './pages/caja/CajaPage'
 import PedidosPage from './pages/pedidos/PedidosPage'
+import AgotadosPage from './pages/agotados/AgotadosPage'
 import InventarioPage from './pages/inventario/InventarioPage'
 import ReportesPage from './pages/reportes/ReportesPage'
 import ProveedoresPage from './pages/proveedores/ProveedoresPage'
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="comandas" element={<ComandasPage />} />
           <Route path="cocina" element={<CocinaPage />} />
           <Route path="bar" element={<BarPage />} />
+          <Route path="agotados" element={<AgotadosPage />} />
           <Route path="caja" element={<CajaPage />} />
           <Route path="pedidos" element={<PedidosPage />} />
           <Route path="menu" element={<MenuPage />} />

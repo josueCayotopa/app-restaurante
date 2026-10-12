@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import Header from '../../components/layout/Header'
 import ControlesKiosco from '../../components/kds/ControlesKiosco'
+import { Link } from 'react-router-dom'
 import { useComandasStore } from '../../store/comandasStore'
 import { reimprimirComanda } from '../../lib/impresion'
 import { useToastStore } from '../../store/toastStore'
 import type { Comanda, ItemComanda, EstadoItem } from '../../types'
-import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer } from 'lucide-react'
+import { Clock, CheckCircle, AlertTriangle, Play, Beer, GlassWater, Flame, RotateCcw, Printer, Ban } from 'lucide-react'
 import { etiquetaComanda, insigniaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 
 function tiempoTranscurrido(isoString: string): { minutos: number; label: string; urgente: boolean } {
@@ -271,7 +272,7 @@ export default function BarPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <Header titulo="Bar — KDS" subtitulo="Bebidas & Cócteles" acciones={<ControlesKiosco />} />
+      <Header titulo="Bar — KDS" subtitulo="Bebidas & Cócteles" acciones={<div className="flex items-center gap-2"><Link to="/agotados" title="Marcar lo que se terminó por hoy" className="flex items-center gap-1.5 px-3 min-h-10 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"><Ban size={16} /> <span className="hidden sm:inline">Agotados</span></Link><ControlesKiosco /></div>} />
 
       <div className="flex-1 p-4 md:p-6 overflow-y-auto md:overflow-hidden">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5 md:h-full">
