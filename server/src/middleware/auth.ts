@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 
 const SECRET = process.env.JWT_SECRET || 'sgr-cade-secret'
+// La clave por defecto está en el repositorio (público): con ella cualquiera podría fabricar una sesión
+if (!process.env.JWT_SECRET) {
+  console.error('⚠️  [SEGURIDAD] Falta JWT_SECRET en server/.env: se está usando la clave por defecto. Define una clave larga y aleatoria.')
+}
 
 export interface JwtPayload {
   id: string
