@@ -4,8 +4,57 @@ import { apiFetch, ApiError } from '../../lib/api'
 import { socket } from '../../lib/socket'
 import {
   Package, AlertTriangle, TrendingDown, Plus, Edit2, X, Check,
-  ArrowUp, ArrowDown, Search, Filter, Loader2, Trash2, Scale,
+  ArrowUp, ArrowDown, Search, Filter, Loader2, Trash2, Scale, Link2, FileSpreadsheet,
 } from 'lucide-react'
+import ModalVincular from '../../components/inventario/ModalVincular'
+import { exportarKardex, type KardexInsumo } from '../../lib/exportarExcel'
+
+// ── Exportar Kardex (elige el periodo) ──
+function hoyISO() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date())
+}
+function ModalKardex({ onCerrar }: { onCerrar: () => void }) {
+  const hoy = hoyISO()
+  const [desde, setDesde] = useState(hoy.slice(0, 8) + '01')   // del 1 del mes
+  const [hasta, setHasta] = useState(hoy)
+  const [generando, setGenerando] = useState(false)
+  const [error, setError] = useState('')
+  const generar = async () => {
+    setGenerando(true); setError('')
+    try {
+      const k = await apiFetch<{ desde: string; hasta: string; kardex: KardexInsumo[] }>(`/api/inventario/kardex?desde=${desde}&hasta=${hasta}`)
+      exportarKardex(k)
+      onCerrar()
+    } catch (e) {
+      setError(errorDe(e))
+    } finally {
+      setGenerando(false)
+    }
+  }
+  const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500'
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+        <div>
+          <h2 className="font-bold text-gray-800 flex items-center gap-2"><FileSpreadsheet size={17} /> Kardex del almacén</h2>
+          <p className="text-xs text-gray-400">Excel con el resumen por insumo y el detalle de cada movimiento con su saldo.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs text-gray-500">Desde<input type="date" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} className={inputCls} /></label>
+          <label className="text-xs text-gray-500">Hasta<input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} className={inputCls} /></label>
+        </div>
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <div className="flex gap-3">
+          <button onClick={onCerrar} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+          <button onClick={generar} disabled={generando || !desde || !hasta}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-50">
+            {generando ? <Loader2 size={15} className="animate-spin" /> : <FileSpreadsheet size={15} />} Exportar Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 type UnidadMedida = 'kg' | 'g' | 'l' | 'ml' | 'unidad' | 'caja' | 'bolsa' | 'saco'
 type CategoriaInsumo = 'carnes' | 'pescados' | 'verduras' | 'lacteos' | 'bebidas' | 'abarrotes' | 'descartables'
@@ -280,6 +329,8 @@ export default function InventarioPage() {
   const [insumoMov, setInsumoMov] = useState<Insumo | null>(null)
   const [modalInsumo, setModalInsumo] = useState<{ abierto: boolean; insumo?: Insumo }>({ abierto: false })
   const [soloAlertas, setSoloAlertas] = useState(false)
+  const [modalVincular, setModalVincular] = useState(false)
+  const [modalKardex, setModalKardex] = useState(false)
 
   const cargar = useCallback(async () => {
     try {
@@ -361,10 +412,20 @@ export default function InventarioPage() {
               </button>
             ))}
           </div>
-          <button onClick={() => setModalInsumo({ abierto: true })}
-            className="flex items-center gap-2 px-4 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700">
-            <Plus size={15} /> Nuevo insumo
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => setModalVincular(true)} title="Qué producto de la carta descuenta cada insumo al venderse"
+              className="flex items-center gap-2 px-4 py-2 border border-gold-300 bg-gold-50 text-gold-700 rounded-lg text-sm font-semibold hover:bg-gold-100">
+              <Link2 size={15} /> Vincular con productos
+            </button>
+            <button onClick={() => setModalKardex(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-green-300 bg-green-50 text-green-700 rounded-lg text-sm font-semibold hover:bg-green-100">
+              <FileSpreadsheet size={15} /> Exportar Kardex
+            </button>
+            <button onClick={() => setModalInsumo({ abierto: true })}
+              className="flex items-center gap-2 px-4 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700">
+              <Plus size={15} /> Nuevo insumo
+            </button>
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-500">{error}</p>}
@@ -520,6 +581,8 @@ export default function InventarioPage() {
       {modalInsumo.abierto && (
         <ModalInsumo insumo={modalInsumo.insumo} onGuardado={cargar} onCerrar={() => setModalInsumo({ abierto: false })} />
       )}
+      {modalVincular && <ModalVincular insumos={insumos} onCerrar={() => setModalVincular(false)} onListo={cargar} />}
+      {modalKardex && <ModalKardex onCerrar={() => setModalKardex(false)} />}
     </div>
   )
 }

@@ -44,6 +44,45 @@ router.get('/movimientos', autenticar, async (req: Request, res: Response) => {
   res.json(movimientos)
 })
 
+// GET /api/inventario/kardex?desde=YYYY-MM-DD&hasta=YYYY-MM-DD → Kardex del almacén
+// Por insumo: saldo al inicio del periodo, cada movimiento con entrada/salida/saldo y totales.
+router.get('/kardex', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response): Promise<void> => {
+  const esFecha = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+  if (!esFecha(req.query.desde) || !esFecha(req.query.hasta)) { res.status(400).json({ error: 'Indica las fechas desde y hasta' }); return }
+  // Días completos en hora de Lima (UTC-5)
+  const inicio = new Date(`${req.query.desde}T00:00:00-05:00`)
+  const fin = new Date(`${req.query.hasta}T23:59:59.999-05:00`)
+  if (inicio > fin) { res.status(400).json({ error: 'El rango de fechas es inválido' }); return }
+
+  const [insumos, movs] = await Promise.all([
+    prisma.insumo.findMany({ orderBy: { nombre: 'asc' } }),
+    prisma.movimientoStock.findMany({ where: { realizadoEn: { lte: fin } }, orderBy: { realizadoEn: 'asc' } }),
+  ])
+  const signo = (tipo: string) => (tipo === 'entrada' ? 1 : -1)
+  const kardex = insumos.map((ins) => {
+    let saldo = 0
+    const filas: { fecha: Date; tipo: string; motivo: string | null; usuario: string | null; entrada: number; salida: number; saldo: number }[] = []
+    let saldoInicial = 0
+    for (const m of movs.filter((x) => x.insumoId === ins.id)) {
+      // Con stockResultante el saldo es exacto (ajustes incluidos); si falta, se acumula por tipo
+      const nuevo = m.stockResultante ?? r3(saldo + signo(m.tipo) * m.cantidad)
+      const delta = r3(nuevo - saldo)
+      saldo = nuevo
+      if (m.realizadoEn < inicio) { saldoInicial = saldo; continue }
+      filas.push({ fecha: m.realizadoEn, tipo: m.tipo, motivo: m.motivo, usuario: m.usuario, entrada: delta > 0 ? delta : 0, salida: delta < 0 ? -delta : 0, saldo })
+    }
+    return {
+      insumoId: ins.id, nombre: ins.nombre, categoria: ins.categoria, unidad: ins.unidad, costoUnitario: ins.precioUnitario,
+      saldoInicial,
+      entradas: r3(filas.reduce((a, f) => a + f.entrada, 0)),
+      salidas: r3(filas.reduce((a, f) => a + f.salida, 0)),
+      saldoFinal: filas.length ? filas[filas.length - 1].saldo : saldoInicial,
+      movimientos: filas,
+    }
+  })
+  res.json({ desde: req.query.desde, hasta: req.query.hasta, kardex })
+})
+
 // POST /api/inventario  (stockActual inicial opcional → queda registrado como entrada)
 router.post('/', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
   const r = datosInsumo(req.body)

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
+import { aplicarVentasPendientes } from '../lib/inventarioVentas'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -28,6 +29,11 @@ router.get('/', autenticar, async (_req: Request, res: Response) => {
   const porProducto: Record<string, Linea[]> = {}
   for (const l of todas) (porProducto[l.productoId] ??= []).push(l)
   res.json(Object.fromEntries(Object.entries(porProducto).map(([id, lineas]) => [id, { lineas, ...resumen(lineas) }])))
+})
+
+// POST /api/recetas/aplicar-ventas → descuenta del inventario las ventas hechas antes de vincular el producto
+router.post('/aplicar-ventas', autenticar, requerirRol('admin'), async (_req: Request, res: Response) => {
+  res.json(await aplicarVentasPendientes())
 })
 
 // PUT /api/recetas/:productoId { lineas: [{ insumoId, cantidad }] } → reemplaza la receta

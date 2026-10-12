@@ -88,3 +88,41 @@ export const SIN_PREPARAR = ['pendiente']
 export function enSegundoPlano(p: Promise<unknown>, contexto: string) {
   p.catch((e) => console.error(`[inventario] ${contexto}:`, e))
 }
+
+// Registra en el inventario las ventas que no se descontaron porque el producto aún no
+// estaba vinculado a su insumo (sin receta). Solo cuenta ventas hechas DESPUÉS de crear el
+// insumo (lo vendido antes ya estaba reflejado en el conteo inicial). No repite nada: un
+// ítem que ya tiene su salida registrada se salta.
+export async function aplicarVentasPendientes() {
+  const recetas = await prisma.recetaItem.findMany({ include: { insumo: { select: { creadoEn: true } } } })
+  if (recetas.length === 0) return { items: 0, movimientos: 0 }
+  const items = await prisma.itemComanda.findMany({
+    where: {
+      productoId: { in: [...new Set(recetas.map((r) => r.productoId))] },
+      estado: { notIn: ['cancelado', 'devuelto'] },
+      comanda: { estado: { not: 'cancelada' } },
+    },
+    include: { comanda: { select: { creadaEn: true, tipo: true, numero: true, numeroMesa: true } } },
+  })
+  const yaDescontados = new Set((await prisma.movimientoStock.findMany({
+    where: { itemComandaId: { in: items.map((i) => i.id) }, tipo: 'salida' }, select: { itemComandaId: true },
+  })).map((m) => m.itemComandaId))
+
+  const fecha = (d: Date) => d.toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+  const movs: Movimiento[] = []
+  const conVenta = new Set<string>()
+  for (const item of items) {
+    if (yaDescontados.has(item.id)) continue
+    const origen = item.comanda.tipo === 'pedido' ? `Pedido #${item.comanda.numero}` : `Mesa ${item.comanda.numeroMesa}`
+    for (const r of recetas.filter((x) => x.productoId === item.productoId)) {
+      if (item.comanda.creadaEn < r.insumo.creadoEn) continue   // vendido antes del conteo inicial
+      movs.push({
+        insumoId: r.insumoId, cantidad: r.cantidad * item.cantidad, itemComandaId: item.id,
+        motivo: `Venta · ${origen} · ${item.cantidad}× ${item.nombre} (del ${fecha(item.comanda.creadaEn)}, registrada después)`,
+      })
+      conVenta.add(item.id)
+    }
+  }
+  await aplicar(movs, 'salida')
+  return { items: conVenta.size, movimientos: movs.length }
+}
