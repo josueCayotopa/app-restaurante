@@ -11,7 +11,38 @@ import { apiFetch } from '../../lib/api'
 import { socket } from '../../lib/socket'
 import { etiquetaComanda, insigniaComanda, esPedido, MODALIDADES, modalidadDe } from '../../lib/etiqueta'
 import type { Comanda } from '../../types'
-import { CreditCard, Banknote, Receipt, CheckCircle, ChevronRight, Printer, Scissors, Wallet } from 'lucide-react'
+import { CreditCard, Banknote, Receipt, CheckCircle, ChevronRight, Printer, Scissors, Wallet, FileText, Loader2 } from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
+
+// Botón: reporte de ventas de un día en PDF (por defecto hoy)
+function ReporteDiario() {
+  const usuario = useAuthStore((s) => s.usuario?.nombre ?? '')
+  const [fecha, setFecha] = useState(hoyISO())
+  const [generando, setGenerando] = useState(false)
+  const generar = async () => {
+    setGenerando(true)
+    try {
+      const { descargarReporteDiario } = await import('../../lib/reporteDiarioPdf')
+      await descargarReporteDiario(fecha, usuario)
+    } catch (e) {
+      useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se pudo generar el reporte', mensaje: e instanceof Error ? e.message : 'Revisa la conexión', duracion: 6000 })
+    } finally {
+      setGenerando(false)
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-3">
+      <FileText size={18} className="text-gray-500" />
+      <span className="text-sm font-semibold text-gray-700 mr-auto">Reporte de ventas del día</span>
+      <input type="date" value={fecha} max={hoyISO()} onChange={(e) => setFecha(e.target.value)}
+        className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500" />
+      <button onClick={generar} disabled={generando || !fecha}
+        className="flex items-center gap-2 px-4 py-2 bg-rojo-500 text-white rounded-lg text-sm font-bold hover:bg-rojo-600 disabled:opacity-50">
+        {generando ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />} Descargar PDF
+      </button>
+    </div>
+  )
+}
 
 function inicioDeHoy() {
   const d = new Date(); d.setHours(0, 0, 0, 0); return d
@@ -154,6 +185,8 @@ export default function CajaPage() {
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5">
         <PanelCaja />
+
+        <ReporteDiario />
 
         {/* KPIs del día */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
