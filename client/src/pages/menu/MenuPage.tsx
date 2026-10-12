@@ -9,8 +9,9 @@ import { SECCION_CFG, type SeccionCarta } from '../../lib/carta'
 import { apiUpload, urlArchivo, ApiError } from '../../lib/api'
 import type { Producto, CategoriaProducto } from '../../types'
 import {
-  Search, Plus, Tags, ToggleLeft, ToggleRight, Clock, Edit2, Trash2, X, Check, ImagePlus, Loader2, ClipboardList,
+  Search, Plus, Tags, ToggleLeft, ToggleRight, Clock, Edit2, Trash2, X, Check, ImagePlus, Loader2, ClipboardList, Ban, RotateCcw,
 } from 'lucide-react'
+import { estaAgotado } from '../../lib/agotados'
 
 // Clases de color (fondo sólido) de una categoría por id
 function colorDe(categorias: Categoria[], id: string) {
@@ -292,6 +293,10 @@ function TarjetaProducto({
   const receta = useRecetasStore((s) => s.recetas[producto.id])
   const margen = receta && producto.precio > 0 ? Math.round(((producto.precio - receta.costo) / producto.precio) * 100) : null
   const toggleDisponibilidad = useCartaStore((s) => s.toggleDisponibilidad)
+  const marcarAgotado = useCartaStore((s) => s.marcarAgotado)
+  const agotado = estaAgotado(producto)
+  const cambiarAgotado = () =>
+    marcarAgotado(producto.id, !agotado).catch((e) => alert(e instanceof ApiError ? e.message : 'No se pudo cambiar'))
   const categorias = useCategoriasStore((s) => s.categorias)
   const actualizarProducto   = useCartaStore((s) => s.actualizarProducto)
   const cat = categorias.find((c) => c.id === producto.categoria)
@@ -316,7 +321,7 @@ function TarjetaProducto({
 
   return (
     <div className={`bg-white rounded-xl border border-gray-200 p-2.5 flex gap-3 items-center transition-opacity ${
-      !producto.disponible ? 'opacity-60' : ''
+      !producto.disponible ? 'opacity-60' : agotado ? 'bg-red-50 border-red-200' : ''
     }`}>
       {/* Foto (clic para subir/cambiar) */}
       <input ref={inputFoto} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleFoto} className="hidden" />
@@ -341,8 +346,19 @@ function TarjetaProducto({
       </button>
 
       <div className="flex-1 min-w-0">
-        <h3 className="font-semibold text-gray-800 text-sm leading-tight truncate" title={producto.nombre}>{producto.nombre}</h3>
-        <p className="font-bold text-gold-600 text-sm">S/ {producto.precio.toFixed(2)}</p>
+        <h3 className={`font-semibold text-gray-800 text-sm leading-tight truncate ${agotado ? 'line-through decoration-2 decoration-red-500' : ''}`} title={producto.nombre}>{producto.nombre}</h3>
+        <div className="flex items-center gap-2">
+          <p className={`font-bold text-sm ${agotado ? 'text-gray-400 line-through' : 'text-gold-600'}`}>S/ {producto.precio.toFixed(2)}</p>
+          {producto.disponible && (
+            <button onClick={cambiarAgotado}
+              title={agotado ? 'Volvió a haber: quitar el tachado' : 'Se terminó por hoy (mañana vuelve solo)'}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold transition-colors ${
+                agotado ? 'bg-red-500 text-white hover:bg-red-600' : 'border border-red-200 text-red-600 hover:bg-red-50'
+              }`}>
+              {agotado ? <><RotateCcw size={11} /> Agotado hoy</> : <><Ban size={11} /> Se terminó</>}
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 ${colorDe(categorias, producto.categoria)}`}>
             {cat?.nombre}

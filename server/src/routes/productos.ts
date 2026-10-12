@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { PrismaClient } from '@prisma/client'
 import { autenticar, requerirRol } from '../middleware/auth'
+import { getIo } from '../sockets/io'
+import { estaAgotado, hoyLima } from '../lib/agotados'
 
 const router = Router()
 const prisma = new PrismaClient()
@@ -11,6 +13,7 @@ function mapProducto(p: Record<string, unknown>) {
     guarnicionesDisponibles: p.guarnicionesDisponibles
       ? JSON.parse(p.guarnicionesDisponibles as string)
       : undefined,
+    agotado: estaAgotado(p as { agotadoDia?: string | null }),
   }
 }
 
@@ -57,7 +60,8 @@ router.post('/', autenticar, requerirRol('admin', 'cajero'), async (req: Request
 
 // PATCH /api/productos/:id
 router.patch('/:id', autenticar, requerirRol('admin', 'cajero'), async (req: Request, res: Response) => {
-  const { guarnicionesDisponibles, ...resto } = req.body
+  // agotado (calculado) e id no se guardan por aquí
+  const { guarnicionesDisponibles, agotado: _agotado, id: _id, ...resto } = req.body
   const p = await prisma.producto.update({
     where: { id: String(req.params.id) },
     data: {
@@ -78,6 +82,20 @@ router.patch('/:id/disponibilidad', autenticar, requerirRol('admin', 'cajero', '
     data: { disponible },
   })
   res.json(p)
+})
+
+// PATCH /api/productos/:id/agotado { agotado } → "se terminó por hoy" (vuelve solo al día siguiente)
+router.patch('/:id/agotado', autenticar, requerirRol('admin', 'cajero', 'cocinero', 'bartender'), async (req: Request, res: Response): Promise<void> => {
+  const agotado = req.body?.agotado === true
+  const p = await prisma.producto.update({
+    where: { id: String(req.params.id) },
+    data: { agotadoDia: agotado ? hoyLima() : null },
+  }).catch(() => null)
+  if (!p) { res.status(404).json({ error: 'Producto no encontrado' }); return }
+  const mapeado = mapProducto(p as never)
+  // Todas las tablets lo tachan al instante
+  getIo().emit('producto:agotado', { id: p.id, agotadoDia: p.agotadoDia })
+  res.json(mapeado)
 })
 
 // DELETE /api/productos/:id

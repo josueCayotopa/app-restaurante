@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import { apiFetch } from '../lib/api'
 import type { Producto, CategoriaProducto } from '../types'
+import { hoyLima } from '../lib/agotados'
 
 interface CartaState {
   productos: Producto[]
   cargando: boolean
   cargarProductos: () => Promise<void>
   toggleDisponibilidad: (id: string) => void
+  marcarAgotado:        (id: string, agotado: boolean) => Promise<void>
+  aplicarAgotadoRemoto: (id: string, agotadoDia: string | null) => void
   agregarProducto: (producto: Omit<Producto, 'id'>) => Promise<void>
   actualizarProducto: (id: string, datos: Partial<Producto>) => Promise<void>
   eliminarProducto: (id: string) => Promise<void>
@@ -28,6 +31,21 @@ export const useCartaStore = create<CartaState>((set, get) => ({
       set({ cargando: false })
     }
   },
+
+  // "Se terminó por hoy": tachado al instante; si el servidor lo rechaza, vuelve atrás
+  marcarAgotado: async (id, agotado) => {
+    const antes = get().productos.find((p) => p.id === id)?.agotadoDia ?? null
+    get().aplicarAgotadoRemoto(id, agotado ? hoyLima() : null)
+    try {
+      await apiFetch(`/api/productos/${id}/agotado`, { method: 'PATCH', body: JSON.stringify({ agotado }) })
+    } catch (e) {
+      get().aplicarAgotadoRemoto(id, antes)
+      throw e
+    }
+  },
+
+  aplicarAgotadoRemoto: (id, agotadoDia) =>
+    set((s) => ({ productos: s.productos.map((p) => (p.id === id ? { ...p, agotadoDia } : p)) })),
 
   toggleDisponibilidad: (id) => {
     const producto = get().productos.find((p) => p.id === id)

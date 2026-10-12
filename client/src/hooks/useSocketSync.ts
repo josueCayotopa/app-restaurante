@@ -4,6 +4,7 @@ import { useComandasStore } from '../store/comandasStore'
 import { useMesasStore } from '../store/mesasStore'
 import { useToastStore } from '../store/toastStore'
 import { useAuthStore } from '../store/authStore'
+import { useCartaStore } from '../store/cartaStore'
 import { reproducirAlerta } from '../lib/sound'
 import type { Comanda, ItemComanda, TipoPlato, EstadoComanda, EstadoMesa } from '../types'
 import { etiquetaComanda } from '../lib/etiqueta'
@@ -194,7 +195,11 @@ export function useSocketSync() {
     // Uniones de mesas (u otros cambios de varias mesas a la vez): se recarga la lista
     const onMesas = () => { useMesasStore.getState().cargarMesas() }
 
+    // Producto agotado por hoy (o repuesto): todas las tablets lo tachan / destachan al instante
+    const onAgotado = (d: { id: string; agotadoDia: string | null }) => useCartaStore.getState().aplicarAgotadoRemoto(d.id, d.agotadoDia)
+
     socket.on('mesa:estado_actualizado', onMesaEstado)
+    socket.on('producto:agotado', onAgotado)
     socket.on('mesas:actualizadas', onMesas)
     socket.on('comanda:cuenta_pedida', onCuentaPedida)
     socket.on('comanda:actualizada', onComandaActualizada)
@@ -204,6 +209,7 @@ export function useSocketSync() {
 
     return () => {
       socket.off('mesa:estado_actualizado', onMesaEstado)
+      socket.off('producto:agotado', onAgotado)
       socket.off('mesas:actualizadas', onMesas)
       socket.off('comanda:cuenta_pedida', onCuentaPedida)
       socket.off('comanda:actualizada', onComandaActualizada)

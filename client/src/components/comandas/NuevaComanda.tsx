@@ -9,6 +9,7 @@ import { useTurnoStore } from '../../store/turnoStore'
 import { useAuthStore } from '../../store/authStore'
 import { etiquetaComanda, MODALIDADES, cargoPedido, type Modalidad } from '../../lib/etiqueta'
 import { ContadorDescartables } from './Descartables'
+import { estaAgotado } from '../../lib/agotados'
 import type {
   Producto, CategoriaProducto, ItemComanda,
   TipoPlato, Comanda, TipoDescuento,
@@ -192,10 +193,11 @@ function ProductoCard({
   onAgregar: () => void
   onQuitar: () => void
 }) {
+  const agotado = estaAgotado(producto)
   return (
     <div className={`bg-white border rounded-xl p-2.5 sm:p-3 flex items-center gap-3 transition-all ${
       cantidad > 0 ? 'border-steel-300 shadow-sm' : 'border-gray-100'
-    } ${!producto.disponible ? 'opacity-50 pointer-events-none' : ''}`}>
+    } ${!producto.disponible || agotado ? 'opacity-50 pointer-events-none' : ''}`}>
       {producto.imagen && (
         <img
           src={urlArchivo(producto.imagen)}
@@ -204,7 +206,8 @@ function ProductoCard({
         />
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-800 truncate">{producto.nombre}</p>
+        <p className={`text-sm font-medium text-gray-800 truncate ${agotado ? 'line-through' : ''}`}>{producto.nombre}</p>
+        {agotado && <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500 text-white">AGOTADO HOY</span>}
         {producto.descripcion && (
           <p className="text-xs text-gray-400 truncate">{producto.descripcion}</p>
         )}

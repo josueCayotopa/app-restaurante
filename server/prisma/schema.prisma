@@ -110,6 +110,7 @@ model Producto {
   precio            Float
   categoria         String
   disponible        Boolean  @default(true)
+  agotadoDia        String?  // "YYYY-MM-DD" (hora de Lima): agotado solo ese día
   imagen            String?
   tiempoPreparacion Int?
   esAlcoholico      Boolean  @default(false)

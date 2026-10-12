@@ -135,6 +135,7 @@ export interface Producto {
   precio: number
   categoria: CategoriaProducto
   disponible: boolean
+  agotadoDia?: string | null   // "YYYY-MM-DD": se terminó ese día (vuelve solo al siguiente)
   imagen?: string
   tiempoPreparacion?: number
   esAlcoholico?: boolean

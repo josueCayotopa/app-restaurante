@@ -6,6 +6,7 @@ import { subtotalDeItems, validarPago, calcularTotales, MODALIDADES, cargoPedido
 import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
 import { liberarUnidas } from './mesas'
+import { productosAgotados } from '../lib/agotados'
 import { imprimirComandaAuto, imprimirAnulacionAuto } from './impresion'
 import { resolverMozo } from './turnos'
 import { descontarVenta, devolverVenta, enSegundoPlano, SIN_PREPARAR } from '../lib/inventarioVentas'
@@ -140,6 +141,8 @@ router.post('/', autenticar, async (req: Request, res: Response): Promise<void> 
   const quien = await resolverMozo(req.usuario, mozo)
   if ('error' in quien) { res.status(quien.status).json({ error: quien.error }); return }
   if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene ítems' }); return }
+  const agotados = await productosAgotados(items.map((i: { productoId: string }) => i.productoId))
+  if (agotados.length) { res.status(409).json({ error: `Se agotó por hoy: ${agotados.join(', ')}. Quítalo del pedido.` }); return }
   const mesa = await prisma.mesa.findUnique({ where: { id: String(mesaId ?? '') } })
   if (!mesa) { res.status(404).json({ error: 'La mesa no existe' }); return }
   const yaAbierta = await prisma.comanda.findFirst({ where: { mesaId: mesa.id, estado: { notIn: ['cerrada', 'cancelada'] } } })
@@ -388,6 +391,8 @@ router.post('/:id/items/batch', autenticar, async (req: Request, res: Response):
   if (comanda.estado === 'cerrada' || comanda.estado === 'cancelada') { res.status(409).json({ error: 'La comanda ya está cerrada' }); return }
   // Un pedido ya pagado no admite más ítems: se cobraría menos de lo entregado
   if (comanda.cobradaEn) { res.status(409).json({ error: 'El pedido ya está pagado: registra lo adicional como un pedido nuevo' }); return }
+  const agotados = await productosAgotados(aCrear.map((i: { productoId: string }) => i.productoId))
+  if (agotados.length) { res.status(409).json({ error: `Se agotó por hoy: ${agotados.join(', ')}. Quítalo del pedido.` }); return }
 
   await prisma.$transaction(
     aCrear.map((i) =>
@@ -620,6 +625,8 @@ router.post('/pedidos', autenticar, requerirRol(...ROLES_PEDIDOS), async (req: R
   const clienteTelefono = typeof req.body.clienteTelefono === 'string' ? req.body.clienteTelefono.trim() || null : null
   if (!clienteNombre) { res.status(400).json({ error: 'Escribe el nombre del cliente' }); return }
   if (!Array.isArray(items) || items.length === 0) { res.status(400).json({ error: 'El pedido no tiene platos ni bebidas' }); return }
+  const agotados = await productosAgotados(items.map((i: { productoId: string }) => i.productoId))
+  if (agotados.length) { res.status(409).json({ error: `Se agotó por hoy: ${agotados.join(', ')}. Quítalo del pedido.` }); return }
   const recojo = horaRecojo ? new Date(horaRecojo) : null
   if (recojo && isNaN(recojo.getTime())) { res.status(400).json({ error: 'Hora de recojo inválida' }); return }
   // modalidad: comer aquí · para llevar (descartables) · delivery (descartables + envío)
