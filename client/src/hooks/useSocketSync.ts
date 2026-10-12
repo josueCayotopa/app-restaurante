@@ -198,7 +198,14 @@ export function useSocketSync() {
     // Producto agotado por hoy (o repuesto): todas las tablets lo tachan / destachan al instante
     const onAgotado = (d: { id: string; agotadoDia: string | null }) => useCartaStore.getState().aplicarAgotadoRemoto(d.id, d.agotadoDia)
 
+    // Cambió la unión de mesas de una comanda abierta (Mesa 4+5+6)
+    const onComandaMesas = (d: { comandaId: string; mesasUnidas: number[] }) => {
+      const c = useComandasStore.getState().comandas.find((x) => x.id === d.comandaId)
+      if (c) useComandasStore.getState().aplicarComandaRemota({ ...c, mesasUnidas: d.mesasUnidas.length ? d.mesasUnidas : undefined })
+    }
+
     socket.on('mesa:estado_actualizado', onMesaEstado)
+    socket.on('comanda:mesas', onComandaMesas)
     socket.on('producto:agotado', onAgotado)
     socket.on('mesas:actualizadas', onMesas)
     socket.on('comanda:cuenta_pedida', onCuentaPedida)
@@ -209,6 +216,7 @@ export function useSocketSync() {
 
     return () => {
       socket.off('mesa:estado_actualizado', onMesaEstado)
+      socket.off('comanda:mesas', onComandaMesas)
       socket.off('producto:agotado', onAgotado)
       socket.off('mesas:actualizadas', onMesas)
       socket.off('comanda:cuenta_pedida', onCuentaPedida)

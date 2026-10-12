@@ -43,25 +43,48 @@ router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Pro
 })
 
 // PATCH /api/mesas/:id
-router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response) => {
+router.patch('/:id', autenticar, requerirRol('admin'), async (req: Request, res: Response): Promise<void> => {
   const { numero, capacidad, zona, posX, posY } = req.body
-  const mesa = await prisma.mesa.update({
-    where: { id: String(req.params.id) },
-    data: { numero, capacidad, zona, posX, posY },
-  })
-  res.json(mesa)
+  if (numero !== undefined && !(Number.isInteger(numero) && numero > 0)) { res.status(400).json({ error: 'El número de mesa debe ser un entero mayor que 0' }); return }
+  if (capacidad !== undefined && !(Number.isInteger(capacidad) && capacidad > 0)) { res.status(400).json({ error: 'La capacidad debe ser un entero mayor que 0' }); return }
+  try {
+    const mesa = await prisma.mesa.update({
+      where: { id: String(req.params.id) },
+      data: { numero, capacidad, zona, posX, posY },
+    })
+    avisarMesas()
+    res.json(mesa)
+  } catch (e) {
+    if ((e as { code?: string }).code === 'P2002') { res.status(409).json({ error: `Ya existe la mesa ${numero}` }); return }
+    throw e
+  }
 })
 
 // ── Unir / separar mesas (se guarda en el servidor: todas las pantallas lo ven) ──
 // La secundaria queda "unida" apuntando a la principal, que es la que lleva la comanda.
 
 // Avisa a todos los equipos que cambiaron las mesas (recargan la lista)
-const avisarMesas = () => getIo().emit('mesas:actualizadas')
+function avisarMesas() { getIo().emit('mesas:actualizadas') }
+
+async function actualizarComandaDeUnion(principalId: string) {
+  const comanda = await prisma.comanda.findFirst({ where: { mesaId: principalId, estado: { notIn: ['cerrada', 'cancelada'] } } })
+  if (!comanda) return
+  const numeros = (await prisma.mesa.findMany({ where: { unidaA: principalId }, select: { numero: true }, orderBy: { numero: 'asc' } })).map((m) => m.numero)
+  await prisma.comanda.update({ where: { id: comanda.id }, data: { mesasUnidas: numeros.length ? JSON.stringify(numeros) : null } })
+  getIo().emit('comanda:mesas', { comandaId: comanda.id, mesasUnidas: numeros })
+}
 
 // Separa las mesas unidas a una principal (al separar a mano, al cobrar o al cancelar su comanda)
 export async function liberarUnidas(principalId: string) {
   const r = await prisma.mesa.updateMany({ where: { unidaA: principalId }, data: { unidaA: null, estado: 'libre' } })
   if (r.count) avisarMesas()
+}
+
+// Quita UNA mesa de la unión (las demás siguen unidas)
+async function quitarDeUnion(principalId: string, secundariaId: string) {
+  await prisma.mesa.updateMany({ where: { id: secundariaId, unidaA: principalId }, data: { unidaA: null, estado: 'libre' } })
+  avisarMesas()
+  await actualizarComandaDeUnion(principalId)
 }
 
 // POST /api/mesas/:id/unir { secundariaId }
@@ -83,12 +106,16 @@ router.post('/:id/unir', autenticar, async (req: Request, res: Response): Promis
   if (abierta) { res.status(409).json({ error: `La mesa ${secundaria.numero} tiene una comanda abierta: cóbrala o cancélala antes de unirla` }); return }
   await prisma.mesa.update({ where: { id: secundariaId }, data: { unidaA: principalId, estado: 'unida' } })
   avisarMesas()
+  await actualizarComandaDeUnion(principalId)
   res.json({ ok: true })
 })
 
-// POST /api/mesas/:id/separar → libera las mesas unidas a esta principal
+// POST /api/mesas/:id/separar { secundariaId? } → con secundariaId quita solo esa mesa; sin él, separa todas
 router.post('/:id/separar', autenticar, async (req: Request, res: Response): Promise<void> => {
-  await liberarUnidas(String(req.params.id))
+  const principalId = String(req.params.id)
+  const secundariaId = req.body?.secundariaId ? String(req.body.secundariaId) : null
+  if (secundariaId) await quitarDeUnion(principalId, secundariaId)
+  else { await liberarUnidas(principalId); await actualizarComandaDeUnion(principalId) }
   res.json({ ok: true })
 })
 

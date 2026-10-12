@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Header from '../../components/layout/Header'
 import { useMesasStore } from '../../store/mesasStore'
 import { useAuthStore } from '../../store/authStore'
+import { ApiError } from '../../lib/api'
 import { useComandasStore } from '../../store/comandasStore'
 import { useZonasStore } from '../../store/zonasStore'
 import NuevaComanda from '../../components/comandas/NuevaComanda'
@@ -9,7 +10,7 @@ import ModalCancelarComanda from '../../components/comandas/ModalCancelarComanda
 import type { Mesa, EstadoMesa, Zona } from '../../types'
 import {
   Users, Plus, ClipboardList, X, CheckCircle, AlertCircle,
-  BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt, XCircle,
+  BookOpen, Link2, Link2Off, Trash2, Check, MapPin, Receipt, XCircle, Pencil,
 } from 'lucide-react'
 import { imprimirPrecuenta } from '../../lib/impresion'
 import { totalAPagar } from '../../components/caja/ModalCobro'
@@ -195,11 +196,12 @@ function ModalNuevaMesa({ onCerrar }: { onCerrar: () => void }) {
 
 // ─── Tarjeta Mesa ─────────────────────────────────────────────────────────────
 
-function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSeleccionarParaUnir }: {
+function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, elegidasParaUnir, onSeleccionarParaUnir }: {
   mesa: Mesa
   onClick: () => void
   modoUnion: boolean
-  seleccionadaParaUnir: string | null
+  seleccionadaParaUnir: string | null      // la principal de la unión
+  elegidasParaUnir: string[]               // las que se van a unir a ella
   onSeleccionarParaUnir: (id: string) => void
 }) {
   const cfg = ESTADO_CONFIG[mesa.estado]
@@ -213,7 +215,10 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
   const mesasSecundarias = (mesa.mesasUnidasIds ?? []).map((id) => mesas.find((m) => m.id === id)).filter(Boolean) as Mesa[]
 
   const isSeleccionada = seleccionadaParaUnir === mesa.id
+  const elegida = elegidasParaUnir.includes(mesa.id)
+  // Ya elegida la principal, solo se pueden sumar mesas sueltas (no otra principal con su propio grupo)
   const puedeFusionar = modoUnion && !esSecundaria && mesa.estado !== 'unida'
+    && (!seleccionadaParaUnir || isSeleccionada || !esPrincipal)
 
   const handleClick = () => {
     if (modoUnion && puedeFusionar) {
@@ -230,6 +235,8 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
           ? 'border-transparent bg-orange-500 cursor-default'
           : isSeleccionada
           ? 'border-gold-500 bg-gold-50 shadow-lg ring-2 ring-gold-300'
+          : elegida
+          ? 'border-orange-500 bg-orange-50 shadow-lg ring-2 ring-orange-300 cursor-pointer'
           : puedeFusionar
           ? 'border-dashed border-gold-300 bg-white hover:border-gold-500 hover:shadow-md cursor-pointer'
           : `${esPrincipal ? 'border-orange-500 ring-2 ring-orange-400' : 'border-transparent'} ${cfg.solidBg} hover:shadow-md hover:brightness-105 cursor-pointer`
@@ -298,11 +305,67 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
   )
 }
 
+// ─── Editar mesa (admin) ──────────────────────────────────────────────────────
+
+function FormEditarMesa({ mesa, onListo }: { mesa: Mesa; onListo: () => void }) {
+  const editarMesa = useMesasStore((s) => s.editarMesa)
+  const zonas = useZonasStore((s) => s.zonas)
+  const [numero, setNumero] = useState(String(mesa.numero))
+  const [capacidad, setCapacidad] = useState(String(mesa.capacidad))
+  const [zona, setZona] = useState<string>(mesa.zona)
+  const [guardando, setGuardando] = useState(false)
+  const [error, setError] = useState('')
+
+  const guardar = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const n = parseInt(numero), cap = parseInt(capacidad)
+    if (!(n > 0) || !(cap > 0)) { setError('Número y capacidad deben ser mayores que 0'); return }
+    setGuardando(true); setError('')
+    try {
+      await editarMesa(mesa.id, { numero: n, capacidad: cap, zona })
+      onListo()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'No se pudo guardar')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold-500'
+  return (
+    <form onSubmit={guardar} className="border border-gray-200 rounded-xl p-3 space-y-3 bg-gray-50">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Editar mesa</p>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs text-gray-500">Número
+          <input type="number" min={1} value={numero} onChange={(e) => setNumero(e.target.value)} className={inputCls} />
+        </label>
+        <label className="text-xs text-gray-500">Capacidad (pers.)
+          <input type="number" min={1} value={capacidad} onChange={(e) => setCapacidad(e.target.value)} className={inputCls} />
+        </label>
+      </div>
+      <label className="block text-xs text-gray-500">Zona
+        <select value={zona} onChange={(e) => setZona(e.target.value)} className={inputCls}>
+          {zonas.map((z) => <option key={z.id} value={z.nombre}>{z.nombre}</option>)}
+          {!zonas.some((z) => z.nombre === zona) && <option value={zona}>{zona}</option>}
+        </select>
+      </label>
+      {error && <p className="text-xs text-red-500 font-medium">{error}</p>}
+      <div className="flex gap-2">
+        <button type="button" onClick={onListo} className="flex-1 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-white">Cancelar</button>
+        <button type="submit" disabled={guardando} className="flex-1 py-2 bg-gold-600 text-white rounded-lg text-sm font-semibold hover:bg-gold-700 disabled:opacity-50">
+          {guardando ? 'Guardando…' : 'Guardar'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 // ─── Panel de Mesa ────────────────────────────────────────────────────────────
 
-function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
+function PanelMesa({ mesa, onCerrar, onUnir }: { mesa: Mesa; onCerrar: () => void; onUnir: () => void }) {
   const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
-  const { cambiarEstado, eliminarMesa, separarMesa, mesas } = useMesasStore()
+  const { cambiarEstado, eliminarMesa, separarMesa, quitarDeUnion, mesas } = useMesasStore()
+  const [editando, setEditando] = useState(false)
   const getComandaByMesa = useComandasStore((s) => s.getComandaByMesa)
   const comanda = getComandaByMesa(mesa.id)
   const [nuevaComandaAbierta, setNuevaComandaAbierta] = useState(false)
@@ -369,15 +432,43 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
                     <span className="text-sm font-medium text-gold-700">Mesa {ms.numero}</span>
                     <span className="text-xs text-gold-500">{ms.capacidad} pers.</span>
                   </div>
+                  <button onClick={() => quitarDeUnion(mesa.id, ms.id)} title={`Quitar la mesa ${ms.numero} de la unión`}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-rojo-600 hover:bg-rojo-50">
+                    <X size={12} /> Quitar
+                  </button>
                 </div>
               ))}
-              <button onClick={() => { separarMesa(mesa.id); onCerrar() }}
-                className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-gold-300 text-gold-700 rounded-lg text-xs font-medium hover:bg-gold-50 transition-colors">
-                <Link2Off size={13} /> Separar mesas
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={onUnir}
+                  className="flex items-center justify-center gap-2 py-2 border border-dashed border-orange-300 text-orange-700 rounded-lg text-xs font-medium hover:bg-orange-50 transition-colors">
+                  <Link2 size={13} /> Agregar mesa
+                </button>
+                <button onClick={() => { separarMesa(mesa.id); onCerrar() }}
+                  className="flex items-center justify-center gap-2 py-2 border border-dashed border-gold-300 text-gold-700 rounded-lg text-xs font-medium hover:bg-gold-50 transition-colors">
+                  <Link2Off size={13} /> Separar todas
+                </button>
+              </div>
             </div>
           </div>
         )}
+
+        {/* Unir con otras mesas (mesa suelta) */}
+        {!esPrincipal && mesa.estado !== 'unida' && (
+          <button onClick={onUnir}
+            className="w-full flex items-center justify-center gap-2 py-2 border border-dashed border-orange-300 text-orange-700 rounded-lg text-sm font-medium hover:bg-orange-50 transition-colors">
+            <Link2 size={14} /> Unir con otras mesas
+          </button>
+        )}
+
+        {/* Editar mesa (solo admin) */}
+        {esAdmin && (editando
+          ? <FormEditarMesa mesa={mesa} onListo={() => setEditando(false)} />
+          : (
+            <button onClick={() => setEditando(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+              <Pencil size={14} /> Editar mesa (número, capacidad, zona)
+            </button>
+          ))}
 
         {/* Comanda activa */}
         {comanda ? (
@@ -485,12 +576,13 @@ function PanelMesa({ mesa, onCerrar }: { mesa: Mesa; onCerrar: () => void }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function MesasPage() {
-  const { mesas, mesaSeleccionada, seleccionarMesa, unirMesas } = useMesasStore()
+  const { mesas, mesaSeleccionada, seleccionarMesa, unirVarias } = useMesasStore()
   const esAdmin = useAuthStore((s) => s.usuario?.rol === 'admin')
   const zonas = useZonasStore((s) => s.zonas)
   const [zonaFiltro, setZonaFiltro] = useState<Zona | 'todas'>('todas')
   const [modoUnion, setModoUnion] = useState(false)
-  const [primeraSeleccion, setPrimeraSeleccion] = useState<string | null>(null)
+  const [primeraSeleccion, setPrimeraSeleccion] = useState<string | null>(null)   // mesa principal
+  const [elegidas, setElegidas] = useState<string[]>([])                           // mesas a unir a ella
   const [modalNuevaMesa, setModalNuevaMesa] = useState(false)
   const [modalZonas, setModalZonas] = useState(false)
 
@@ -504,21 +596,36 @@ export default function MesasPage() {
     unida: mesas.filter((m) => m.estado === 'unida').length,
   }
 
+  // 1er toque = mesa principal; los siguientes marcan/desmarcan las mesas a unir (todas las que quieras)
   const handleSeleccionarParaUnir = (mesaId: string) => {
     if (!primeraSeleccion) {
       setPrimeraSeleccion(mesaId)
     } else if (primeraSeleccion === mesaId) {
       setPrimeraSeleccion(null)
+      setElegidas([])
     } else {
-      unirMesas(primeraSeleccion, mesaId)
-      setPrimeraSeleccion(null)
-      setModoUnion(false)
+      setElegidas((e) => (e.includes(mesaId) ? e.filter((x) => x !== mesaId) : [...e, mesaId]))
     }
   }
 
   const cancelarModoUnion = () => {
     setModoUnion(false)
     setPrimeraSeleccion(null)
+    setElegidas([])
+  }
+
+  const confirmarUnion = () => {
+    if (!primeraSeleccion || elegidas.length === 0) return
+    unirVarias(primeraSeleccion, elegidas)
+    cancelarModoUnion()
+  }
+
+  // Desde el panel de una mesa: entra a unir con esa mesa ya como principal
+  const unirDesde = (mesaId: string) => {
+    seleccionarMesa(null)
+    setModoUnion(true)
+    setPrimeraSeleccion(mesaId)
+    setElegidas([])
   }
 
   return (
@@ -596,12 +703,20 @@ export default function MesasPage() {
             <div className="flex-1">
               <p className="text-sm font-semibold text-gold-700">Modo unión de mesas activo</p>
               <p className="text-xs text-gold-600">
-                {primeraSeleccion
-                  ? `Mesa ${mesas.find((m) => m.id === primeraSeleccion)?.numero} seleccionada como principal. Haz clic en la segunda mesa para unirlas.`
-                  : 'Haz clic en la mesa principal (la que recibirá la comanda conjunta).'}
+                {!primeraSeleccion
+                  ? 'Toca la mesa principal (la que llevará la comanda).'
+                  : elegidas.length === 0
+                  ? `Principal: Mesa ${mesas.find((m) => m.id === primeraSeleccion)?.numero}. Ahora toca todas las mesas que quieras unirle.`
+                  : `Mesa ${mesas.find((m) => m.id === primeraSeleccion)?.numero} + ${elegidas.map((id) => mesas.find((m) => m.id === id)?.numero).join(' + ')}`}
               </p>
             </div>
-            <button onClick={cancelarModoUnion} className="text-gold-600 hover:text-gold-700 text-sm font-medium">
+            {primeraSeleccion && elegidas.length > 0 && (
+              <button onClick={confirmarUnion}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 shrink-0">
+                Unir {elegidas.length + 1} mesas
+              </button>
+            )}
+            <button onClick={cancelarModoUnion} className="text-gold-600 hover:text-gold-700 text-sm font-medium shrink-0">
               Cancelar
             </button>
           </div>
@@ -616,6 +731,7 @@ export default function MesasPage() {
               onClick={() => seleccionarMesa(mesa)}
               modoUnion={modoUnion}
               seleccionadaParaUnir={primeraSeleccion}
+              elegidasParaUnir={elegidas}
               onSeleccionarParaUnir={handleSeleccionarParaUnir}
             />
           ))}
@@ -627,7 +743,7 @@ export default function MesasPage() {
         <>
           <div className="fixed inset-0 bg-black/20 z-40" onClick={() => seleccionarMesa(null)} />
           {/* Siempre la versión actual de la mesa (no la copia del momento en que se abrió el panel) */}
-          <PanelMesa mesa={mesas.find((m) => m.id === mesaSeleccionada.id) ?? mesaSeleccionada} onCerrar={() => seleccionarMesa(null)} />
+          <PanelMesa mesa={mesas.find((m) => m.id === mesaSeleccionada.id) ?? mesaSeleccionada} onCerrar={() => seleccionarMesa(null)} onUnir={() => unirDesde(mesaSeleccionada.id)} />
         </>
       )}
 

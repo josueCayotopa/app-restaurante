@@ -26,6 +26,9 @@ interface MesasState {
   crearMesa: (datos: { numero: number; capacidad: number; zona: Zona }) => Promise<void>
   eliminarMesa: (id: string) => void
   unirMesas: (principalId: string, secundariaId: string) => void
+  unirVarias: (principalId: string, secundariaIds: string[]) => Promise<void>
+  quitarDeUnion: (principalId: string, secundariaId: string) => void
+  editarMesa: (id: string, datos: { numero: number; capacidad: number; zona: string }) => Promise<void>
   separarMesa: (principalId: string) => void
 }
 
@@ -86,6 +89,35 @@ export const useMesasStore = create<MesasState>((set, get) => ({
     }))
     apiFetch(`/api/mesas/${principalId}/unir`, { method: 'POST', body: JSON.stringify({ secundariaId }) })
       .catch((e) => { avisarError(e, 'No se pudieron unir las mesas'); get().cargarMesas() })
+  },
+
+  // Une varias mesas a una principal (una por una en el servidor, todas al instante en pantalla)
+  unirVarias: async (principalId, secundariaIds) => {
+    set((s) => ({
+      mesas: conUniones(s.mesas.map((m) => (secundariaIds.includes(m.id) ? { ...m, estado: 'unida' as EstadoMesa, unidaA: principalId } : m))),
+    }))
+    try {
+      for (const secundariaId of secundariaIds) {
+        await apiFetch(`/api/mesas/${principalId}/unir`, { method: 'POST', body: JSON.stringify({ secundariaId }) })
+      }
+    } catch (e) {
+      avisarError(e, 'No se pudieron unir todas las mesas')
+      get().cargarMesas()
+    }
+  },
+
+  // Saca una sola mesa de la unión; las demás siguen unidas
+  quitarDeUnion: (principalId, secundariaId) => {
+    set((s) => ({
+      mesas: conUniones(s.mesas.map((m) => (m.id === secundariaId ? { ...m, estado: 'libre' as EstadoMesa, unidaA: null } : m))),
+    }))
+    apiFetch(`/api/mesas/${principalId}/separar`, { method: 'POST', body: JSON.stringify({ secundariaId }) })
+      .catch((e) => { avisarError(e, 'No se pudo quitar la mesa'); get().cargarMesas() })
+  },
+
+  editarMesa: async (id, datos) => {
+    const actualizada = await apiFetch<Mesa>(`/api/mesas/${id}`, { method: 'PATCH', body: JSON.stringify(datos) })
+    set((s) => ({ mesas: conUniones(s.mesas.map((m) => (m.id === id ? { ...m, ...actualizada } : m))) }))
   },
 
   separarMesa: (principalId) => {
