@@ -5,6 +5,7 @@ import { getIo } from '../sockets/io'
 import { subtotalDeItems, validarPago, calcularTotales, MODALIDADES, cargoPedido, llevaDescartables, platosConEnvase, type Modalidad } from '../lib/cobro'
 import { etiquetaComanda } from '../lib/impresion/tickets'
 import { hayCajaAbierta } from './caja'
+import { liberarUnidas } from './mesas'
 import { imprimirComandaAuto, imprimirAnulacionAuto } from './impresion'
 import { resolverMozo } from './turnos'
 import { descontarVenta, devolverVenta, enSegundoPlano, SIN_PREPARAR } from '../lib/inventarioVentas'
@@ -215,6 +216,8 @@ router.patch('/:id/estado', autenticar, async (req: Request, res: Response): Pro
   if (estado === 'cancelada' && comanda.mesaId) {
     const mesa = await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'libre' } }).catch(() => null)
     if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+    // Las mesas que estaban unidas a esta también quedan libres
+    await liberarUnidas(comanda.mesaId).catch(() => {})
   }
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
@@ -462,6 +465,8 @@ async function cerrarComanda(id: string, datos: Record<string, unknown>) {
   if (comanda.mesaId) {
     const mesa = await prisma.mesa.update({ where: { id: comanda.mesaId }, data: { estado: 'libre' } }).catch(() => null)
     if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+    // Las mesas que estaban unidas a esta también quedan libres
+    await liberarUnidas(comanda.mesaId).catch(() => {})
   }
   const mapeada = mapComanda(comanda as never)
   getIo().emit('comanda:actualizada', mapeada)
@@ -739,6 +744,8 @@ router.post('/:id/cancelar', autenticar, requerirRol('admin', 'cajero', 'mozo'),
   if (c.mesaId) {
     const mesa = await prisma.mesa.update({ where: { id: c.mesaId }, data: { estado: 'libre' } }).catch(() => null)
     if (mesa) getIo().emit('mesa:estado_actualizado', mesa)
+    // Las mesas que estaban unidas a esta también quedan libres
+    await liberarUnidas(c.mesaId).catch(() => {})
   }
   const mapeada = mapComanda(cancelado as never)
   // La comanda primero (las pantallas la necesitan para mostrar las devoluciones aunque esté cancelada)

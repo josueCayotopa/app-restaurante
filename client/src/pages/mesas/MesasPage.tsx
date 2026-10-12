@@ -227,24 +227,24 @@ function TarjetaMesa({ mesa, onClick, modoUnion, seleccionadaParaUnir, onSelecci
     <button onClick={handleClick}
       className={`relative border-2 rounded-xl p-4 text-left transition-all ${
         esSecundaria
-          ? 'border-gold-200 bg-gold-50 opacity-70 cursor-default'
+          ? 'border-transparent bg-orange-500 cursor-default'
           : isSeleccionada
           ? 'border-gold-500 bg-gold-50 shadow-lg ring-2 ring-gold-300'
           : puedeFusionar
           ? 'border-dashed border-gold-300 bg-white hover:border-gold-500 hover:shadow-md cursor-pointer'
-          : `border-transparent ${cfg.solidBg} hover:shadow-md hover:brightness-105 cursor-pointer`
+          : `${esPrincipal ? 'border-orange-500 ring-2 ring-orange-400' : 'border-transparent'} ${cfg.solidBg} hover:shadow-md hover:brightness-105 cursor-pointer`
       }`}
     >
       {/* Badge unida */}
       {esPrincipal && (
-        <div className="absolute -top-2 -right-2 bg-gold-600 text-white rounded-full px-2 py-0.5 text-xs font-bold flex items-center gap-1">
+        <div className="absolute -top-2 -right-2 bg-orange-600 text-white rounded-full px-2 py-0.5 text-xs font-bold flex items-center gap-1 shadow">
           <Link2 size={10} />
           +{mesasSecundarias.length}
         </div>
       )}
       {esSecundaria && (
-        <div className="absolute -top-2 -right-2 bg-gold-500 text-gray-900 rounded-full px-2 py-0.5 text-xs font-bold">
-          unida
+        <div className="absolute -top-2 -right-2 bg-white text-orange-700 rounded-full px-2 py-0.5 text-xs font-bold shadow flex items-center gap-1">
+          <Link2 size={10} /> Mesa {mesas.find((m) => m.id === mesa.mesaPrincipalId)?.numero ?? ''}
         </div>
       )}
 

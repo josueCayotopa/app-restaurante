@@ -79,6 +79,7 @@ model Mesa {
   capacidad Int
   zona      String   @default("salon")
   estado    String   @default("libre")
+  unidaA    String?  // mesa unida: id de la mesa principal (la que lleva la comanda)
   posX      Float    @default(0)
   posY      Float    @default(0)
 

@@ -1,6 +1,18 @@
 import { create } from 'zustand'
 import { apiFetch } from '../lib/api'
 import type { Mesa, EstadoMesa, Zona } from '../types'
+import { useToastStore } from './toastStore'
+import { ApiError } from '../lib/api'
+
+// Las uniones vienen del servidor (unidaA = mesa principal); aquí se arma principal ↔ secundarias
+function conUniones(mesas: Mesa[]): Mesa[] {
+  return mesas.map((m) => {
+    const secundarias = mesas.filter((x) => x.unidaA === m.id).map((x) => x.id)
+    return { ...m, mesaPrincipalId: m.unidaA ?? undefined, mesasUnidasIds: secundarias.length ? secundarias : undefined }
+  })
+}
+const avisarError = (e: unknown, titulo: string) =>
+  useToastStore.getState().agregar({ tipo: 'error', titulo, mensaje: e instanceof ApiError ? e.message : 'Sin conexión: intenta de nuevo', duracion: 6000 })
 
 interface MesasState {
   mesas: Mesa[]
@@ -27,7 +39,7 @@ export const useMesasStore = create<MesasState>((set, get) => ({
     set({ cargando: true })
     try {
       // 'en_limpieza' ya no existe: si llega de datos antiguos se muestra como libre
-      const mesas = (await apiFetch<Mesa[]>('/api/mesas')).map((m) => ((m.estado as string) === 'en_limpieza' ? { ...m, estado: 'libre' as EstadoMesa } : m))
+      const mesas = conUniones((await apiFetch<Mesa[]>('/api/mesas')).map((m) => ((m.estado as string) === 'en_limpieza' ? { ...m, estado: 'libre' as EstadoMesa } : m)))
       set({ mesas, cargando: false })
     } catch (e) {
       console.error('[mesas] Error cargando:', e)
@@ -47,10 +59,9 @@ export const useMesasStore = create<MesasState>((set, get) => ({
 
   actualizarMesas: (mesas) => set({ mesas }),
 
-  // Cambio hecho desde otro equipo (o al cobrar). Si la mesa se libera, se separan las que estaban unidas.
+  // Cambio hecho desde otro equipo (o al cobrar). Las mesas unidas las separa el servidor (aviso mesas:actualizadas).
   aplicarEstadoRemoto: (id, estado) => {
     if ((estado as string) === 'en_limpieza') estado = 'libre'
-    if (estado === 'libre' && get().mesas.find((m) => m.id === id)?.mesasUnidasIds?.length) get().separarMesa(id)
     set((s) => ({ mesas: s.mesas.map((m) => (m.id === id ? { ...m, estado } : m)) }))
   },
 
@@ -68,35 +79,20 @@ export const useMesasStore = create<MesasState>((set, get) => ({
       .catch((e) => console.error('[mesas] Error eliminando:', e))
   },
 
-  unirMesas: (principalId, secundariaId) =>
+  // Se ve al instante; el servidor lo guarda y avisa a todas las pantallas
+  unirMesas: (principalId, secundariaId) => {
     set((s) => ({
-      mesas: s.mesas.map((m) => {
-        if (m.id === principalId) {
-          const yaUnidas = m.mesasUnidasIds ?? []
-          if (yaUnidas.includes(secundariaId)) return m
-          return { ...m, mesasUnidasIds: [...yaUnidas, secundariaId] }
-        }
-        if (m.id === secundariaId) {
-          return { ...m, estado: 'unida', mesaPrincipalId: principalId }
-        }
-        return m
-      }),
-    })),
+      mesas: conUniones(s.mesas.map((m) => (m.id === secundariaId ? { ...m, estado: 'unida' as EstadoMesa, unidaA: principalId } : m))),
+    }))
+    apiFetch(`/api/mesas/${principalId}/unir`, { method: 'POST', body: JSON.stringify({ secundariaId }) })
+      .catch((e) => { avisarError(e, 'No se pudieron unir las mesas'); get().cargarMesas() })
+  },
 
-  separarMesa: (principalId) =>
-    set((s) => {
-      const principal = s.mesas.find((m) => m.id === principalId)
-      const idsSecundarias = principal?.mesasUnidasIds ?? []
-      return {
-        mesas: s.mesas.map((m) => {
-          if (m.id === principalId) {
-            return { ...m, mesasUnidasIds: undefined }
-          }
-          if (idsSecundarias.includes(m.id)) {
-            return { ...m, estado: 'libre', mesaPrincipalId: undefined }
-          }
-          return m
-        }),
-      }
-    }),
+  separarMesa: (principalId) => {
+    set((s) => ({
+      mesas: conUniones(s.mesas.map((m) => (m.unidaA === principalId ? { ...m, estado: 'libre' as EstadoMesa, unidaA: null } : m))),
+    }))
+    apiFetch(`/api/mesas/${principalId}/separar`, { method: 'POST', body: '{}' })
+      .catch((e) => { avisarError(e, 'No se pudieron separar las mesas'); get().cargarMesas() })
+  },
 }))

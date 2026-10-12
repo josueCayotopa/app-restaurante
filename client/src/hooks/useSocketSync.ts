@@ -191,7 +191,11 @@ export function useSocketSync() {
 
     const onMesaEstado = (mesa: { id: string; estado: EstadoMesa }) => useMesasStore.getState().aplicarEstadoRemoto(mesa.id, mesa.estado)
 
+    // Uniones de mesas (u otros cambios de varias mesas a la vez): se recarga la lista
+    const onMesas = () => { useMesasStore.getState().cargarMesas() }
+
     socket.on('mesa:estado_actualizado', onMesaEstado)
+    socket.on('mesas:actualizadas', onMesas)
     socket.on('comanda:cuenta_pedida', onCuentaPedida)
     socket.on('comanda:actualizada', onComandaActualizada)
     socket.on('comanda:item_actualizado', onItemActualizado)
@@ -200,6 +204,7 @@ export function useSocketSync() {
 
     return () => {
       socket.off('mesa:estado_actualizado', onMesaEstado)
+      socket.off('mesas:actualizadas', onMesas)
       socket.off('comanda:cuenta_pedida', onCuentaPedida)
       socket.off('comanda:actualizada', onComandaActualizada)
       socket.off('comanda:item_actualizado', onItemActualizado)

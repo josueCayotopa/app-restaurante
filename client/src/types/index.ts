@@ -43,6 +43,7 @@ export interface Mesa {
   posY: number
   mesasUnidasIds?: string[]
   mesaPrincipalId?: string
+  unidaA?: string | null    // guardado en el servidor: id de la mesa principal
 }
 
 export type EstadoItem =
