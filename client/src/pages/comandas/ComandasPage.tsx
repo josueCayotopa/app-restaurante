@@ -26,7 +26,7 @@ const ESTADO_COMANDA: Record<EstadoComanda, { label: string; color: string; bg: 
   enviada_cocina: { label: 'En cocina',  color: 'text-rojo-700',  bg: 'bg-rojo-100',  badgeBg: 'bg-rojo-500',  badgeColor: 'text-white',    icon: ChefHat       },
   en_preparacion: { label: 'Preparando', color: 'text-gold-700',  bg: 'bg-gold-100',  badgeBg: 'bg-gold-500',  badgeColor: 'text-gray-900', icon: ChefHat       },
   lista:          { label: 'Lista',      color: 'text-gold-700',  bg: 'bg-gold-100',  badgeBg: 'bg-gold-600',  badgeColor: 'text-white',    icon: CheckCircle   },
-  cerrada:        { label: 'Cerrada',    color: 'text-gray-400',  bg: 'bg-gray-50',   badgeBg: 'bg-gray-300',  badgeColor: 'text-gray-700', icon: CreditCard    },
+  cerrada:        { label: 'Cerrada',    color: 'text-gray-400',  bg: 'bg-gray-50',   badgeBg: 'bg-gray-600',  badgeColor: 'text-white', icon: CreditCard    },
   cancelada:      { label: 'Cancelada',  color: 'text-red-600',   bg: 'bg-red-50',    badgeBg: 'bg-red-500',   badgeColor: 'text-white',    icon: XCircle       },
 }
 

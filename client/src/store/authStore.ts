@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { apiFetch } from '../lib/api'
+import { apiFetch, ApiError } from '../lib/api'
 
 export interface UsuarioSesion {
   id: string
@@ -18,6 +18,16 @@ interface AuthState {
   verificarToken: () => Promise<void>
 }
 
+// Último usuario confirmado por el servidor: permite seguir trabajando si al abrir la app
+// no hay WiFi (la sesión solo se cierra cuando el servidor dice que ya no es válida)
+const CLAVE_USUARIO = 'sgr_usuario'
+const guardarUsuario = (u: UsuarioSesion | null) => {
+  try { u ? localStorage.setItem(CLAVE_USUARIO, JSON.stringify(u)) : localStorage.removeItem(CLAVE_USUARIO) } catch { /* sin almacenamiento */ }
+}
+const usuarioGuardado = (): UsuarioSesion | null => {
+  try { return JSON.parse(localStorage.getItem(CLAVE_USUARIO) ?? 'null') } catch { return null }
+}
+
 export const useAuthStore = create<AuthState>((set) => ({
   usuario: null,
   token: localStorage.getItem('sgr_token'),
@@ -31,6 +41,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         { method: 'POST', body: JSON.stringify({ email, password }) }
       )
       localStorage.setItem('sgr_token', token)
+      guardarUsuario(usuario)
       set({ token, usuario, cargando: false })
     } catch (e) {
       set({ cargando: false })
@@ -40,6 +51,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   cerrarSesion: () => {
     localStorage.removeItem('sgr_token')
+    guardarUsuario(null)
     set({ token: null, usuario: null })
   },
 
@@ -48,10 +60,19 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (!token) { set({ usuario: null }); return }
     try {
       const usuario = await apiFetch<UsuarioSesion>('/api/auth/me')
+      guardarUsuario(usuario)
       set({ usuario, token })
-    } catch {
-      localStorage.removeItem('sgr_token')
-      set({ token: null, usuario: null })
+    } catch (e) {
+      // Sesión vencida o usuario desactivado → al login
+      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+        localStorage.removeItem('sgr_token')
+        guardarUsuario(null)
+        set({ token: null, usuario: null })
+        return
+      }
+      // Sin red / servidor lento: se sigue con el último usuario conocido (se revalida al volver la conexión)
+      const previo = usuarioGuardado()
+      set(previo ? { usuario: previo, token } : { token: null, usuario: null })
     }
   },
 }))

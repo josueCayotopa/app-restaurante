@@ -159,6 +159,14 @@ body {
 [data-tema="oscuro"] .bg-rojo-50  { background-color: rgba(204,34,34,0.08)  !important; }
 [data-tema="oscuro"] .bg-rojo-100 { background-color: rgba(204,34,34,0.15)  !important; }
 
+/* ── Steel (azul) suave en oscuro: antes quedaban bloques blancos ── */
+[data-tema="oscuro"] .bg-steel-50     { background-color: rgba(70,130,180,0.14) !important; }
+[data-tema="oscuro"] .bg-steel-100    { background-color: rgba(70,130,180,0.22) !important; }
+[data-tema="oscuro"] .border-steel-200 { border-color: rgba(70,130,180,0.40) !important; }
+[data-tema="oscuro"] .border-steel-300 { border-color: rgba(70,130,180,0.55) !important; }
+[data-tema="oscuro"] .text-steel-700   { color: #9dbbd8 !important; }
+[data-tema="oscuro"] .text-steel-600   { color: #8daecf !important; }
+
 /* ── Hover genérico sobre steel-50 ── */
 [data-tema="oscuro"] .hover\:bg-steel-50:hover  { background-color: #1a2535 !important; }
 [data-tema="oscuro"] .hover\:bg-amber-50:hover  { background-color: #1e1a0a !important; }

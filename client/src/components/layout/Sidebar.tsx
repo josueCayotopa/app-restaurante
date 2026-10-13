@@ -14,11 +14,13 @@ import { rutasPermitidas } from '../../lib/permisos'
 const navItems = [
   { to: '/',              icon: LayoutGrid,    label: 'Mesas'       },
   { to: '/comandas',      icon: ClipboardList, label: 'Comandas'    },
+  // En el celular la barra de abajo muestra los 5 primeros que el rol puede ver:
+  // Pedidos y Caja van antes que Cocina/Bar (esas corren en sus pantallas fijas)
+  { to: '/pedidos',       icon: ShoppingBag,   label: 'Pedidos'     },
+  { to: '/caja',          icon: Wallet,        label: 'Caja'        },
   { to: '/cocina',        icon: ChefHat,       label: 'Cocina'      },
   { to: '/bar',           icon: Beer,          label: 'Bar'         },
   { to: '/agotados',      icon: Ban,           label: 'Agotados'    },
-  { to: '/pedidos',       icon: ShoppingBag,   label: 'Pedidos'     },
-  { to: '/caja',          icon: Wallet,    label: 'Caja'        },
   { to: '/carta',          icon: BookOpen,        label: 'Carta'     },
   { to: '/menu',           icon: UtensilsCrossed, label: 'Productos'  },
   { to: '/reservas',      icon: CalendarDays,  label: 'Reservas'    },

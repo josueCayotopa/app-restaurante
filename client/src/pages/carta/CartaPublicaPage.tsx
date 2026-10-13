@@ -494,21 +494,21 @@ function TablaSeccion({
         <div className="flex items-center px-3 pt-1 pb-0.5 mb-0.5">
           <span className="flex-1" />
           {columnas.map((c) => (
-            <span key={c} className="w-24 text-right text-xs font-bold text-gray-400 uppercase tracking-wide">{c}</span>
+            <span key={c} className="w-16 sm:w-24 text-right text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wide">{c}</span>
           ))}
           {onEditar && <span className="w-16" />}
         </div>
       )}
       {filas.map((fila, i) => (
         <div key={fila.clave}
-          className={`flex items-center px-3 py-2 text-sm ${i % 2 === 1 ? 'bg-gray-50' : 'bg-white'} ${fila.disponible ? '' : 'opacity-50'}`}>
+          className={`flex items-center px-2 sm:px-3 py-2 text-sm ${i % 2 === 1 ? 'bg-gray-50' : 'bg-white'} ${fila.disponible ? '' : 'opacity-50'}`}>
           <Miniatura fila={fila} />
           <span className="flex-1 text-gray-800 min-w-0 pr-2">
             {fila.nombre}
             {!fila.disponible && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-semibold">Agotado</span>}
           </span>
           {preciosDeFila(fila).map((precio, j) => (
-            <span key={j} className={`${columnas ? 'w-24' : ''} text-right font-semibold text-gold-700 shrink-0`}>{precio}</span>
+            <span key={j} className={`${columnas ? 'w-16 sm:w-24' : ''} text-right text-xs sm:text-sm font-semibold text-gold-700 shrink-0`}>{precio}</span>
           ))}
           <AccionesFila
             onEditar={onEditar ? () => onEditar(fila) : undefined}

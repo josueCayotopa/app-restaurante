@@ -754,8 +754,11 @@ export default function NuevaComanda({
 
           {/* Columna derecha: Pedido */}
           <div className={`bg-white border-l border-gray-200 flex-col ${
-            mobileTab === 'carta' ? 'hidden lg:flex lg:w-[26rem] xl:w-[30rem]' : 'flex flex-1 min-h-0 lg:flex-none lg:w-[26rem] xl:w-[30rem]'
+            mobileTab === 'carta' ? 'hidden lg:flex lg:w-[26rem] xl:w-[30rem]' : 'flex flex-1 min-w-0 min-h-0 lg:flex-none lg:w-[26rem] xl:w-[30rem]'
           }`}>
+            {/* Celular: datos + platos se desplazan juntos (si no, en pantallas bajas no queda sitio para los platos).
+                PC: los datos quedan fijos y solo se desplaza la lista de platos. */}
+            <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden flex flex-col">
             {/* Ítems existentes en modo agregar */}
             {modoAgregar && itemsExistentes.length > 0 && (
               <div className="border-b border-gray-100">
@@ -918,7 +921,7 @@ export default function NuevaComanda({
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+            <div className="shrink-0 lg:shrink lg:flex-1 lg:min-h-0 lg:overflow-y-auto px-3 py-3 space-y-2">
               {itemsPedido.length === 0 ? (
                 <div className="text-center py-8 text-gray-300">
                   <ChefHat size={28} className="mx-auto mb-2 opacity-40" />
@@ -991,6 +994,8 @@ export default function NuevaComanda({
                   </div>
                 ))
               )}
+            </div>
+
             </div>
 
             {/* Footer totales + enviar */}

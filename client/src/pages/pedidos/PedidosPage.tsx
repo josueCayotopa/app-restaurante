@@ -107,7 +107,7 @@ function TarjetaPedido({ pedido, puedeCobrar, cajaAbierta, onCobrar, onAgregar, 
         {pedido.estado !== 'cancelada' && (
           pagado
             ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gold-600 text-white">Pagado · {METODO_LABEL[pedido.metodoPago ?? ''] ?? ''}</span>
-            : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rojo-100 text-rojo-700">Por cobrar</span>
+            : <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rojo-500 text-white">Por cobrar</span>
         )}
       </div>
       {pedido.estado === 'cancelada' && pedido.motivoCancelacion && (
@@ -265,8 +265,8 @@ export default function PedidosPage() {
             ))}
           </div>
           <div className="flex gap-2 text-xs ml-auto">
-            <span className="px-3 py-1.5 rounded-full bg-rojo-100 text-rojo-700 font-semibold">{porCobrar.length} por cobrar</span>
-            <span className="px-3 py-1.5 rounded-full bg-green-100 text-green-700 font-semibold">{listos.length} listos</span>
+            <span className="px-3 py-1.5 rounded-full bg-rojo-500 text-white font-semibold">{porCobrar.length} por cobrar</span>
+            <span className="px-3 py-1.5 rounded-full bg-green-600 text-white font-semibold">{listos.length} listos</span>
           </div>
         </div>
 
