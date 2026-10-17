@@ -260,10 +260,24 @@ router.patch('/:id/items/:itemId/estado', autenticar, async (req: Request, res: 
   const { id, itemId } = req.params as { id: string; itemId: string }
   const { estado, socketId } = req.body
   const previo = await prisma.itemComanda.findUnique({ where: { id: itemId }, select: { estado: true } })
-  const item = await prisma.itemComanda.update({
-    where: { id: itemId },
-    data: { estado },
-  })
+  // Un plato solo avanza (pendiente → en preparación → listo → servido). Si los toques rápidos de
+  // Cocina/Bar llegan desordenados, un estado anterior que llega tarde se ignora: antes podía
+  // dejar "servido" como "listo" y, al llegar una adición, la tarjeta reaparecía con todo.
+  const FLUJO = ['pendiente', 'en_preparacion', 'listo', 'servido']
+  const paso = FLUJO.indexOf(String(estado))
+  if (paso >= 0) {
+    const r = await prisma.itemComanda.updateMany({ where: { id: itemId, estado: { in: FLUJO.slice(0, paso) } }, data: { estado } })
+    if (r.count === 0) {
+      // Ya estaba en ese estado o más adelante (o cancelado/devuelto): se devuelve como está
+      const actual = await prisma.itemComanda.findUnique({ where: { id: itemId } })
+      if (!actual) { res.status(404).json({ error: 'Plato no encontrado' }); return }
+      res.json(mapItem(actual as never))
+      return
+    }
+  }
+  const item = paso >= 0
+    ? (await prisma.itemComanda.findUnique({ where: { id: itemId } }))!
+    : await prisma.itemComanda.update({ where: { id: itemId }, data: { estado } })
   if (estado === 'cancelado' && previo && SIN_PREPARAR.includes(previo.estado)) {
     enSegundoPlano(devolverVenta(item.id, `Anulado antes de preparar · ${item.cantidad}× ${item.nombre}`), 'devolver ítem')
   }

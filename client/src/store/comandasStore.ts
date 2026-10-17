@@ -132,6 +132,11 @@ export interface DatosCobro {
   metodoResto?: 'tarjeta' | 'yape_plin'
 }
 
+// Cadena de envíos de este equipo (ver enviarOEncolar)
+let envioEnCurso: Promise<void> = Promise.resolve()
+// Cambios de estado aún sin respuesta por plato: la respuesta del servidor solo se aplica al último
+const pendientesPorItem = new Map<string, number>()
+
 export const useComandasStore = create<ComandasState>((set, get) => ({
   comandas: [],
   comandaActiva: null,
@@ -141,21 +146,39 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
 
   // Envía ya; si no hay red, deja la operación en cola (y su efecto visible localmente)
   enviarOEncolar: async (op) => {
+    // En pantalla al instante
     set((s) => ({ comandas: aplicarEfecto(s.comandas, op.efecto) }))
-    // Si ya hay operaciones esperando, esta va detrás para respetar el orden
-    if (get().cola.length === 0) {
-      try {
-        const resp = await apiFetch<unknown>(op.ruta, { method: op.metodo, body: JSON.stringify({ ...op.body, socketId: socket.id }) })
-        if (op.efecto.tipo === 'crear' || op.efecto.tipo === 'items') get().aplicarComandaRemota(resp as Comanda)
-        return 'enviado'
-      } catch (e) {
-        if (!esErrorDeRed(e)) throw e
+    // Los envíos de este equipo salen UNO DETRÁS DE OTRO: con toques rápidos (Iniciar → Listo →
+    // Servido) en paralelo podían llegar desordenados al servidor y dejar un estado viejo.
+    const itemId = op.efecto.tipo === 'estadoItem' ? op.efecto.itemId : null
+    if (itemId) pendientesPorItem.set(itemId, (pendientesPorItem.get(itemId) ?? 0) + 1)
+    const anterior = envioEnCurso
+    let liberar!: () => void
+    envioEnCurso = new Promise<void>((r) => { liberar = r })
+    try {
+      await anterior
+      // Si ya hay operaciones esperando (sin red), esta va detrás para respetar el orden
+      if (get().cola.length === 0) {
+        try {
+          const resp = await apiFetch<unknown>(op.ruta, { method: op.metodo, body: JSON.stringify({ ...op.body, socketId: socket.id }) })
+          if (op.efecto.tipo === 'crear' || op.efecto.tipo === 'items') get().aplicarComandaRemota(resp as Comanda)
+          // El servidor responde con el estado real del plato (ignora un estado anterior que llegó tarde)
+          if (op.efecto.tipo === 'estadoItem' && (pendientesPorItem.get(op.efecto.itemId) ?? 0) <= 1 && resp && typeof resp === 'object' && 'estado' in resp) {
+            get().aplicarItemRemoto(op.efecto.comandaId, resp as ItemComanda)
+          }
+          return 'enviado'
+        } catch (e) {
+          if (!esErrorDeRed(e)) throw e
+        }
       }
+      const nueva: OpCola = { ...op, id: generarId(), creadaEn: new Date().toISOString() }
+      set((s) => ({ cola: [...s.cola, nueva] }))
+      guardarCola(get().cola)
+      return 'en_cola'
+    } finally {
+      if (itemId) { const n = (pendientesPorItem.get(itemId) ?? 1) - 1; if (n > 0) pendientesPorItem.set(itemId, n); else pendientesPorItem.delete(itemId) }
+      liberar()
     }
-    const nueva: OpCola = { ...op, id: generarId(), creadaEn: new Date().toISOString() }
-    set((s) => ({ cola: [...s.cola, nueva] }))
-    guardarCola(get().cola)
-    return 'en_cola'
   },
 
   procesarCola: async () => {
