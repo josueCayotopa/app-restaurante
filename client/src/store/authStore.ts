@@ -76,3 +76,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }))
+
+// Token renovado por el servidor: se usa en adelante
+window.addEventListener('sgr:token-renovado', (e) => {
+  useAuthStore.setState({ token: (e as CustomEvent<string>).detail })
+})
+// Sesión vencida o usuario desactivado: aviso y al login (no se siguen perdiendo cambios en silencio)
+window.addEventListener('sgr:sesion-vencida', () => {
+  if (!useAuthStore.getState().usuario) return
+  useAuthStore.getState().cerrarSesion()
+  import('./toastStore').then(({ useToastStore }) => useToastStore.getState().agregar({
+    tipo: 'error', titulo: 'Tu sesión venció', mensaje: 'Vuelve a iniciar sesión para seguir trabajando.', duracion: 10000,
+  }))
+})

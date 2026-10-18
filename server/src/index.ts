@@ -53,7 +53,7 @@ const io = new Server(server, {
 setIo(io)
 
 // ── Middlewares globales ──────────────────────────────────────────────────
-app.use(cors({ origin: origenPermitido }))
+app.use(cors({ origin: origenPermitido, exposedHeaders: ['X-Token-Renovado'] }))
 app.use(express.json())
 app.use('/uploads', express.static(CARPETA_UPLOADS))
 

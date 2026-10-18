@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Maximize, Minimize } from 'lucide-react'
+import { Maximize, Minimize, CloudOff, Loader2 } from 'lucide-react'
+import { useComandasStore } from '../../store/comandasStore'
 
 // Para las pantallas táctiles fijas de Cocina y Bar:
 //  - botón de pantalla completa (oculta barras del navegador)
@@ -38,7 +39,20 @@ export default function ControlesKiosco() {
     else document.documentElement.requestFullscreen().catch(() => {})
   }
 
+  // Cambios de esta pantalla que aún no llegaron al servidor (sin red o servidor caído): se reenvían solos
+  const pendientes = useComandasStore((s) => s.cola.length)
+  const enviando = useComandasStore((s) => s.procesandoCola)
+
   return (
+    <div className="flex items-center gap-2">
+    {pendientes > 0 && (
+      <button onClick={() => useComandasStore.getState().procesarCola()}
+        title="Estos cambios aún no se guardaron en el servidor. Toca para reintentar ahora."
+        className="flex items-center gap-1.5 px-3 min-h-11 rounded-lg bg-red-500 text-white text-sm font-bold animate-pulse">
+        {enviando ? <Loader2 size={16} className="animate-spin" /> : <CloudOff size={16} />}
+        {pendientes} sin enviar
+      </button>
+    )}
     <button
       onClick={alternar}
       title={completa ? 'Salir de pantalla completa' : 'Pantalla completa'}
@@ -47,5 +61,6 @@ export default function ControlesKiosco() {
       {completa ? <Minimize size={18} /> : <Maximize size={18} />}
       <span className="hidden md:inline">{completa ? 'Salir' : 'Pantalla completa'}</span>
     </button>
+    </div>
   )
 }

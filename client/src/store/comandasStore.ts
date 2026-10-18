@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { apiFetch, esErrorDeRed, ApiError } from '../lib/api'
+import { apiFetch, esReintentable, ApiError } from '../lib/api'
 import { socket } from '../lib/socket'
 import { generarId } from '../lib/id'
 import { useToastStore } from './toastStore'
@@ -168,7 +168,13 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
           }
           return 'enviado'
         } catch (e) {
-          if (!esErrorDeRed(e)) throw e
+          if (!esReintentable(e)) {
+            // El servidor lo rechazó: la pantalla vuelve a lo que de verdad está guardado
+            useToastStore.getState().agregar({ tipo: 'error', titulo: 'No se guardó el cambio', mensaje: e instanceof ApiError ? e.message : 'Error al guardar', duracion: 6000 })
+            get().cargarComandas()
+            throw e
+          }
+          // Sin red o servidor caído (5xx): queda en la cola y se reenvía solo
         }
       }
       const nueva: OpCola = { ...op, id: generarId(), creadaEn: new Date().toISOString() }
@@ -191,7 +197,7 @@ export const useComandasStore = create<ComandasState>((set, get) => ({
           const resp = await apiFetch<unknown>(op.ruta, { method: op.metodo, body: JSON.stringify({ ...op.body, socketId: socket.id }) })
           if (op.efecto.tipo === 'crear' || op.efecto.tipo === 'items') get().aplicarComandaRemota(resp as Comanda)
         } catch (e) {
-          if (esErrorDeRed(e)) break   // sigue sin red: se reintenta después
+          if (esReintentable(e)) break   // sin red o servidor caído: se reintenta después
           // El servidor la rechazó (ej. la mesa ya no existe): se descarta para no trabar la cola
           useToastStore.getState().agregar({
             tipo: 'error',

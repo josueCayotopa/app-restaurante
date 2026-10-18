@@ -13,6 +13,18 @@ export class ApiError extends Error {
   }
 }
 
+// Sesión: el servidor manda un token nuevo cuando el actual está por vencer (se guarda solo), y
+// si llega un 401 con sesión iniciada se avisa a la app para llevar al login (antes los cambios
+// de una pantalla con la sesión vencida se perdían sin aviso).
+function revisarSesion(res: Response, conToken: boolean) {
+  const nuevo = res.headers.get('X-Token-Renovado')
+  if (nuevo) {
+    try { localStorage.setItem('sgr_token', nuevo) } catch { /* sin almacenamiento */ }
+    window.dispatchEvent(new CustomEvent('sgr:token-renovado', { detail: nuevo }))
+  }
+  if (res.status === 401 && conToken) window.dispatchEvent(new CustomEvent('sgr:sesion-vencida'))
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem('sgr_token')
   const res = await fetch(`${BASE}${path}`, {
@@ -25,6 +37,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       ...(init?.headers ?? {}),
     },
   })
+  revisarSesion(res, !!token)
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`)
@@ -45,12 +58,21 @@ export async function apiUpload<T>(path: string, file: File, campo = 'imagen'): 
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData,
   })
+  revisarSesion(res, !!token)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`)
   return data as T
 }
 
 // true si falló la red (WiFi caído, servidor inalcanzable) y no la API en sí
+// Fallas que vale la pena reintentar más tarde: sin red, o el servidor/base de datos caídos
+// (5xx, p. ej. 503 "sin base de datos" o 502/504 del proxy IIS), tiempo agotado o demasiadas peticiones
+export function esReintentable(e: unknown): boolean {
+  // 401: sesión vencida → el cambio queda guardado en este equipo y sale al volver a iniciar sesión
+  if (e instanceof ApiError) return e.status >= 500 || e.status === 401 || e.status === 408 || e.status === 429
+  return esErrorDeRed(e)
+}
+
 export function esErrorDeRed(e: unknown): boolean {
   if (e instanceof ApiError) return false
   return e instanceof TypeError || (e instanceof DOMException && (e.name === 'TimeoutError' || e.name === 'AbortError'))
