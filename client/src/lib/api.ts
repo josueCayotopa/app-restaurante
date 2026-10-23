@@ -16,13 +16,17 @@ export class ApiError extends Error {
 // Sesión: el servidor manda un token nuevo cuando el actual está por vencer (se guarda solo), y
 // si llega un 401 con sesión iniciada se avisa a la app para llevar al login (antes los cambios
 // de una pantalla con la sesión vencida se perdían sin aviso).
-function revisarSesion(res: Response, conToken: boolean) {
+// Solo cuenta si la petición salió con la sesión ACTUAL: la respuesta tardía de una petición
+// hecha con una sesión anterior (ya vencida) no debe cerrar la sesión que se acaba de iniciar
+// ni pisar su token.
+function revisarSesion(res: Response, tokenUsado: string | null) {
+  if (!tokenUsado || localStorage.getItem('sgr_token') !== tokenUsado) return
   const nuevo = res.headers.get('X-Token-Renovado')
   if (nuevo) {
     try { localStorage.setItem('sgr_token', nuevo) } catch { /* sin almacenamiento */ }
     window.dispatchEvent(new CustomEvent('sgr:token-renovado', { detail: nuevo }))
   }
-  if (res.status === 401 && conToken) window.dispatchEvent(new CustomEvent('sgr:sesion-vencida'))
+  if (res.status === 401) window.dispatchEvent(new CustomEvent('sgr:sesion-vencida'))
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -37,7 +41,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       ...(init?.headers ?? {}),
     },
   })
-  revisarSesion(res, !!token)
+  revisarSesion(res, token)
   if (res.status === 204) return undefined as T
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`)
@@ -58,7 +62,7 @@ export async function apiUpload<T>(path: string, file: File, campo = 'imagen'): 
     headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     body: formData,
   })
-  revisarSesion(res, !!token)
+  revisarSesion(res, token)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, data.error ?? `HTTP ${res.status}`)
   return data as T
