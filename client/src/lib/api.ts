@@ -16,13 +16,23 @@ export class ApiError extends Error {
 // Sesión: el servidor manda un token nuevo cuando el actual está por vencer (se guarda solo), y
 // si llega un 401 con sesión iniciada se avisa a la app para llevar al login (antes los cambios
 // de una pantalla con la sesión vencida se perdían sin aviso).
+// Fecha de vencimiento (ms) de un token JWT; 0 si no se puede leer
+function vencimiento(token: string): number {
+  try {
+    const datos = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof datos.exp === 'number' ? datos.exp * 1000 : 0
+  } catch { return 0 }
+}
+
 // Solo cuenta si la petición salió con la sesión ACTUAL: la respuesta tardía de una petición
 // hecha con una sesión anterior (ya vencida) no debe cerrar la sesión que se acaba de iniciar
 // ni pisar su token.
 function revisarSesion(res: Response, tokenUsado: string | null) {
   if (!tokenUsado || localStorage.getItem('sgr_token') !== tokenUsado) return
+  // Solo se acepta si dura MÁS que el actual: una respuesta guardada en la caché del navegador
+  // (304) puede traer un token renovado de hace horas, ya vencido, y no debe reemplazar al vigente
   const nuevo = res.headers.get('X-Token-Renovado')
-  if (nuevo) {
+  if (nuevo && vencimiento(nuevo) > Math.max(vencimiento(tokenUsado), Date.now())) {
     try { localStorage.setItem('sgr_token', nuevo) } catch { /* sin almacenamiento */ }
     window.dispatchEvent(new CustomEvent('sgr:token-renovado', { detail: nuevo }))
   }

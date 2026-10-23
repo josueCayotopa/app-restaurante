@@ -55,6 +55,10 @@ setIo(io)
 // ── Middlewares globales ──────────────────────────────────────────────────
 app.use(cors({ origin: origenPermitido, exposedHeaders: ['X-Token-Renovado'] }))
 app.use(express.json())
+// La API no se guarda en la caché del navegador: datos siempre al día y sin respuestas 304 que
+// reutilicen cabeceras viejas (como un X-Token-Renovado vencido). El modo sin conexión usa su propia caché.
+app.set('etag', false)
+app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next() })
 app.use('/uploads', express.static(CARPETA_UPLOADS))
 
 // ── Health check ──────────────────────────────────────────────────────────
